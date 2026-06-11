@@ -90,6 +90,7 @@ Keep a `## Progress` log at the bottom of this file: what's done, what's mid-fli
 - [x] `tender.gov.mn` source adapter — packages/core has Source interface, TenderRecord, runPipeline, sha256, RateLimiter. packages/mn has parseMnDate, parseMnt/formatMnt, normalizeDistrict, normalizeText. apps/worker/src/sources/tender-gov-mn.ts has Playwright adapter + Zod schema. pnpm typecheck 5/5 green. Two TODO selectors (ROW_SELECTOR + pagination) need one manual browser inspect to fill in.
 - [x] pg-boss worker boot + graceful shutdown, health check HTTP server, job handlers (scrape, alert, export), pg-boss scheduler.
 - [x] Docker setup — two-stage Dockerfile, .dockerignore, docker-compose.yml. Builds successfully with mn-worker:local image (312MB). Node.js 22-slim + system deps for Playwright+Chromium.
+- [ ] Alert pipeline (email) — Plan 2 ready, execute next
+- [ ] tender.gov.mn Playwright adapter replacement + opendata stub — Plan 3 ready, execute after Plan 2
 - [ ] First `unegui`-class GazarPrice adapter (aggregate-only)
 - [ ] QPay subscription flow
-- [ ] Alert pipeline (email)
