@@ -33,6 +33,8 @@ export const users = pgTable(
       .notNull(),
     email: text("email").notNull(),
     name: text("name"),
+    telegramChatId: text("telegram_chat_id"),
+    phone: text("phone"),
     ...timestamps,
   },
   (t) => [
@@ -124,5 +126,31 @@ export const listings = pgTable(
     index("listings_district_idx").on(t.district),
     index("listings_price_per_m2_idx").on(t.pricePerM2),
     index("listings_created_at_idx").on(t.createdAt),
+  ],
+);
+
+// ── notifications_sent ────────────────────────────────────────────────────────
+// Idempotency log: one row per (record_id, content_hash, user_id, channel).
+// record_id is text (not FK) — covers both tenders and listings.
+export const notificationsSent = pgTable(
+  "notifications_sent",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    recordId: text("record_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id)
+      .notNull(),
+    channel: text("channel").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("notifications_sent_dedup_idx").on(
+      t.recordId,
+      t.contentHash,
+      t.userId,
+      t.channel,
+    ),
+    index("notifications_sent_user_idx").on(t.userId),
   ],
 );
