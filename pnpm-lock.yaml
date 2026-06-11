@@ -262,6 +262,9 @@ importers:
       '@mn-platform/mn':
         specifier: workspace:*
         version: link:../../packages/mn
+      drizzle-orm:
+        specifier: ^0.41.0
+        version: 0.41.0(gel@2.2.0)(pg@8.21.0)(postgres@3.4.9)
       pg-boss:
         specifier: ^10.0.0
         version: 10.4.2
