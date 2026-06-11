@@ -21,6 +21,7 @@ import type { Source, TenderRecord } from "@mn-platform/core";
 import { TenderRecordSchema, tenderContentHash } from "./tender-schema.js";
 
 const SOURCE_ID = "tender.gov.mn";
+// Reserved for fetchPage implementation once API docs arrive.
 const _BASE_URL = "https://opendata.tender.gov.mn";
 
 interface RawApiTender extends Record<string, unknown> {}
