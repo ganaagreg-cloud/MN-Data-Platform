@@ -87,6 +87,7 @@ export const tenders = pgTable(
     bidSecurityMnt: numeric("bid_security_mnt", { precision: 18, scale: 2 }),
     aimag: text("aimag"),
     status: text("status").notNull().default("announced"),
+    fetchedVia: text("fetched_via"),
     ...timestamps,
   },
   (t) => [
