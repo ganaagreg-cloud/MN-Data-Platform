@@ -5,7 +5,7 @@ One monorepo, two products built on a shared ingestion core:
 - **TenderAlert** — aggregates Mongolian government procurement (tender.gov.mn + ministry portals), alerts businesses on matching tenders before deadlines.
 - **GazarPrice** — aggregates Ulaanbaatar apartment listings into normalized price-per-m² intelligence (aggregate stats only — see scraping-compliance skill).
 
-Both are: scheduled scraper → parse/extract → validate → dedup → upsert to Postgres → serve via Next.js dashboard + alerts → bill via QPay. If you are touching a scraper, read the `source-adapter` skill. If you are touching the DB, read `postgres-conventions`. If you touch any Mongolian field, read `mongolian-data`.
+Both are: scheduled scraper → parse/extract → validate → dedup → upsert to Postgres → serve via a single Next.js dashboard (`apps/platform`) + alerts → bill via QPay. If you are touching a scraper, read the `source-adapter` skill. If you are touching the DB, read `postgres-conventions`. If you touch any Mongolian field, read `mongolian-data`.
 
 ## Definition of Done (gate — do not mark work complete until ALL pass)
 
@@ -26,7 +26,7 @@ Both are: scheduled scraper → parse/extract → validate → dedup → upsert 
 - **Scraping:** Playwright for JS-rendered pages (tender.gov.mn), `undici` fetch for static. One `RateLimiter` per domain.
 - **Extraction:** parser-first; fall back to Claude API (Sonnet) only for messy free-text fields, then validate output with Zod.
 - **Web:** Next.js 15 App Router, Tailwind, shadcn/ui (see `production-ui-design` skill if present).
-- **Alerts:** Resend (email) first; Facebook Messenger second.
+- **Alerts:** Resend email (free tier, default); Telegram Bot API (free add-on, zero marginal cost); Mongolian SMS provider (paid add-on, billed as a QPay subscription line item).
 - **Billing:** QPay invoice + webhook (see `qpay-billing`). Subscription is a state machine.
 - **Observability:** Sentry + `pino` structured logs. Every scrape run logs `{source, fetched, new, updated, errors, durationMs}`.
 - **Auth:** Auth.js (B2B email/password + org accounts).
@@ -34,12 +34,13 @@ Both are: scheduled scraper → parse/extract → validate → dedup → upsert 
 ## Repo layout
 
 ```
-packages/core      # Source interface, pipeline runner, RateLimiter, hashing
-packages/db        # Drizzle schema + migrations (single source of truth)
-packages/mn        # Mongolian utils (Cyrillic, MNT, dates, districts, state-reg)
-apps/worker        # pg-boss workers + scheduled scrape jobs
-apps/tender        # TenderAlert Next.js app
-apps/gazar         # GazarPrice Next.js app
+packages/core          # Source interface, pipeline runner, RateLimiter, hashing
+packages/db            # Drizzle schema + migrations (single source of truth)
+packages/mn            # Mongolian utils (Cyrillic, MNT, dates, districts, state-reg)
+apps/worker            # pg-boss workers + scheduled scrape jobs
+apps/platform          # Single Next.js 15 app, one deployment
+  app/(tender)/        #   TenderAlert route group
+  app/(gazar)/         #   GazarPrice route group
 ```
 
 Shared logic lives in `packages/*`. Product apps import; they do not duplicate ingestion or schema.
@@ -63,6 +64,8 @@ Pipeline (in `packages/core`): fetch → parse → `schema.parse` → `contentHa
 **TenderAlert** — source `tender.gov.mn` (Цахим худалдан авах ажиллагаа).
 Fields: `tender_no`, `procuring_entity` (захиалагч), `category`, `est_budget_mnt` (төсөвт өртөг), `announce_date`, `submission_deadline`, `bid_security_mnt` (тендерийн баталгаа), `aimag` (region). Status machine: `announced → open → closed → awarded → cancelled`. Matching = keyword + category rules against a customer's saved profile.
 
+**Subscription** — has a `modules: ("tender" | "gazar")[]` field. UI routes and API access are gated per module; a user subscribed to both sees both route groups, otherwise only their active module(s).
+
 **GazarPrice** — apartment = байр.
 Fields: `district` (дүүрэг, enum: БЗД Баянзүрх / СБД Сүхбаатар / ЧД Чингэлтэй / ХУД Хан-Уул / СХД Сонгинохайрхан / БГД Баянгол / Налайх / Багануур / Багахангай), `khoroo` (хороо), `rooms` (өрөө), `area_m2` (м²), `floor` (давхар), `building`, `price_mnt`, `price_per_m2` (derived). Republish only aggregates (median ₮/m² by district/building/month), never the source listing text or photos.
 
@@ -82,9 +85,11 @@ Keep a `## Progress` log at the bottom of this file: what's done, what's mid-fli
 
 ## Progress
 
-- [ ] Monorepo + Drizzle schema scaffolded
-- [ ] `tender.gov.mn` source adapter
+- [x] Monorepo scaffold — packages/core, packages/db, packages/mn, apps/worker, apps/platform all have package.json + tsconfig + src stubs. drizzle.config.ts, next.config.ts, migrations/ dir created. All typechecks pass.
+- [x] Drizzle schema — organizations, users, subscriptions, tenders, listings in src/schema/index.ts. Migration 0000 applied and verified (5 tables live). db:migrate script uses node --env-file to auto-load .env.
+- [x] `tender.gov.mn` source adapter — packages/core has Source interface, TenderRecord, runPipeline, sha256, RateLimiter. packages/mn has parseMnDate, parseMnt/formatMnt, normalizeDistrict, normalizeText. apps/worker/src/sources/tender-gov-mn.ts has Playwright adapter + Zod schema. pnpm typecheck 5/5 green. Two TODO selectors (ROW_SELECTOR + pagination) need one manual browser inspect to fill in.
+- [x] pg-boss worker boot + graceful shutdown, health check HTTP server, job handlers (scrape, alert, export), pg-boss scheduler.
+- [x] Docker setup — two-stage Dockerfile, .dockerignore, docker-compose.yml. Builds successfully with mn-worker:local image (312MB). Node.js 22-slim + system deps for Playwright+Chromium.
 - [ ] First `unegui`-class GazarPrice adapter (aggregate-only)
-- [ ] pg-boss schedule + worker
 - [ ] QPay subscription flow
 - [ ] Alert pipeline (email)
