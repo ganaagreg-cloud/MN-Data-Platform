@@ -27,7 +27,7 @@ export async function registerJobs(
   await boss.work(
     "alert.dispatch",
     { batchSize: 5 },
-    async ([_job]: Array<unknown>) => {
+    async (_jobs: PgBoss.Job<unknown>[]) => {
       logger.warn({ event: "alert_dispatch_stub" }, "alert.dispatch stub: not yet implemented");
     },
   );
@@ -36,7 +36,7 @@ export async function registerJobs(
   await boss.work(
     "export.generate",
     { batchSize: 1 },
-    async ([_job]: Array<unknown>) => {
+    async (_jobs: PgBoss.Job<unknown>[]) => {
       logger.warn({ event: "export_generate_stub" }, "export.generate stub: not yet implemented");
     },
   );
