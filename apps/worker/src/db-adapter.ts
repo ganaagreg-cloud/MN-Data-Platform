@@ -38,6 +38,7 @@ export function createDbAdapter(): PipelineDb {
           bidSecurityMnt:     record.bidSecurityMnt,
           aimag:              record.aimag,
           status:             record.status,
+          fetchedVia:         record.fetchedVia,
           raw:                record.raw,
         });
         return "created";
@@ -67,6 +68,7 @@ export function createDbAdapter(): PipelineDb {
           bidSecurityMnt:     record.bidSecurityMnt,
           aimag:              record.aimag,
           status:             record.status,
+          fetchedVia:         record.fetchedVia,
           raw:                record.raw,
         })
         .where(eq(tenders.id, row.id));
