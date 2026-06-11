@@ -58,6 +58,11 @@ export interface TenderRecord {
   bidSecurityMnt: string | null;
   aimag: string | null;
   status: string;
+  /**
+   * Which adapter wrote this record ("playwright" | "api" | future).
+   * Excluded from contentHash — switching adapters must not trigger re-alerts.
+   */
+  fetchedVia: string;
   raw: Record<string, unknown>;
 }
 
