@@ -1,68 +1,69 @@
-/**
- * Source adapter for tender.gov.mn (Цахим худалдан авах ажиллагаа).
- *
- * robots.txt: User-agent: * Allow: /  (all paths permitted for non-AI bots)
- * Rendering: JS — uses Playwright + chromium.
- * Rate limit: 1 req / 2 s with ±500 ms jitter (getRateLimiter default).
- *
- * TODO before first live run:
- *   1. Open https://tender.gov.mn/mn/tender/list in a browser, inspect the DOM.
- *   2. Replace ROW_SELECTOR and the field selectors in extractRows() below.
- *   3. Check whether pagination uses a query-param page number or a "next" button href.
- */
+// apps/worker/src/sources/tender-gov-mn.ts
+//
+// Source adapter — user.tender.gov.mn/mn/invitation (public listing page, no auth).
+//
+// robots.txt: MUST verify https://user.tender.gov.mn/robots.txt before first live run.
+// Rendering: JS — Playwright + Chromium.
+// Rate limit: getRateLimiter("user.tender.gov.mn") — 1 req / 2 s ± 500 ms (subdomain-scoped).
+// User-Agent: honest (TenderAlert/1.0). No spoofing, no rotation.
 
 import { chromium } from "playwright";
-import { z } from "zod";
-import { getRateLimiter, sha256 } from "@mn-platform/core";
-import type { Source, TenderRecord } from "@mn-platform/core";
+import { getRateLimiter } from "@mn-platform/core";
 import { normalizeText, parseMnDate, parseMnt } from "@mn-platform/mn";
+import type { Source, TenderRecord } from "@mn-platform/core";
+import { TenderRecordSchema, tenderContentHash } from "./tender-schema.js";
 
-// ── raw shape off the DOM ────────────────────────────────────────────────────
+// ── raw shape scraped from the DOM ───────────────────────────────────────────
 
 interface RawTender {
   tenderNo: string;
+  title: string;
   procuringEntity: string;
   category: string;
   estBudgetMnt: string;
-  announceDate: string;
   submissionDeadline: string;
+  announceDate: string;
   bidSecurityMnt: string;
   aimag: string;
   status: string;
-  /** Used as externalId fallback when tenderNo is absent. */
+  /** Trailing path segment used as externalId fallback when tenderNo is absent. */
   detailPath: string;
 }
 
-// ── Zod schema (validates parse() output before touching the DB) ─────────────
-
-const TenderRecordSchema = z.object({
-  externalId: z.string().min(1),
-  tenderNo: z.string().nullable(),
-  procuringEntity: z.string().nullable(),
-  category: z.string().nullable(),
-  estBudgetMnt: z.string().nullable(),
-  announceDate: z.date().nullable(),
-  submissionDeadline: z.date().nullable(),
-  bidSecurityMnt: z.string().nullable(),
-  aimag: z.string().nullable(),
-  status: z.string(),
-  raw: z.record(z.string(), z.unknown()),
-});
-
 // ── constants ────────────────────────────────────────────────────────────────
 
-const SOURCE_ID = "tender.gov.mn";
-const LIST_URL = "https://tender.gov.mn/mn/tender/list";
-const USER_AGENT =
-  "TenderAlert/1.0 (+https://tenderalert.mn; info@tenderalert.mn)";
+const SOURCE_ID  = "tender.gov.mn";
+const LIST_URL   = "https://user.tender.gov.mn/mn/invitation";
+const USER_AGENT = "TenderAlert/1.0 (+https://tenderalert.mn; info@tenderalert.mn)";
 
-// TODO: Replace with the actual CSS selector that matches one tender row.
-// e.g. "table.tender-table tbody tr" or ".tender-card"
-const ROW_SELECTOR = "table tbody tr";
+// Rate limiter keyed on the subdomain being hit (not source_id).
+const limiter = getRateLimiter("user.tender.gov.mn");
 
-const limiter = getRateLimiter(SOURCE_ID);
+/**
+ * DOM selectors — update this block after a single browser-devtools session on
+ * https://user.tender.gov.mn/mn/invitation. All TODOs are co-located here so
+ * one inspect pass wires the adapter completely.
+ */
+const SEL = {
+  ROW:         "table tbody tr",                        // TODO: verify after live inspect
+  TENDER_NO:   "td:nth-child(1)",                       // TODO: adjust column indices
+  TITLE:       "td:nth-child(2)",
+  ENTITY:      "td:nth-child(3)",
+  CATEGORY:    "td:nth-child(4)",
+  BUDGET:      "td:nth-child(5)",
+  DEADLINE:    "td:nth-child(6)",
+  ANNOUNCE:    "td:nth-child(7)",
+  BID_SEC:     "td:nth-child(8)",
+  AIMAG:       "td:nth-child(9)",
+  STATUS:      "td:nth-child(10)",
+  DETAIL_LINK: "a[href]",
+  NEXT_PAGE:   ".pagination .next:not(.disabled)",      // TODO: verify pagination pattern
+} as const;
 
-// ── DOM extraction (runs inside the browser via $$eval) ──────────────────────
+// ── DOM extraction (runs inside browser via $$eval) ──────────────────────────
+// Must be a self-contained function — no outer-scope references.
+// Playwright serialises this function body into the page context.
+// Column indices match SEL.TENDER_NO etc; update both together after inspect.
 
 function extractRows(els: Element[]): RawTender[] {
   return els.map((el) => {
@@ -71,17 +72,17 @@ function extractRows(els: Element[]): RawTender[] {
     const link = el.querySelector("a[href]");
 
     return {
-      // TODO: Adjust column indices to match the actual table layout.
-      tenderNo: cell(1),
-      procuringEntity: cell(2),
-      category: cell(3),
-      estBudgetMnt: cell(4),
-      announceDate: cell(5),
+      tenderNo:           cell(1),   // TODO: adjust after live inspect
+      title:              cell(2),
+      procuringEntity:    cell(3),
+      category:           cell(4),
+      estBudgetMnt:       cell(5),
       submissionDeadline: cell(6),
-      bidSecurityMnt: cell(7),
-      aimag: cell(8),
-      status: cell(9),
-      detailPath: link?.getAttribute("href") ?? "",
+      announceDate:       cell(7),
+      bidSecurityMnt:     cell(8),
+      aimag:              cell(9),
+      status:             cell(10),
+      detailPath:         link?.getAttribute("href") ?? "",
     };
   });
 }
@@ -99,27 +100,31 @@ export const tenderGovMnSource: Source<RawTender, TenderRecord> = {
     const browser = await chromium.launch({ headless: true });
     try {
       const ctx = await browser.newContext({
-        userAgent: USER_AGENT,
-        locale: "mn-MN",
+        userAgent:  USER_AGENT,
+        locale:     "mn-MN",
+        timezoneId: "Asia/Ulaanbaatar",
+        viewport:   { width: 1280, height: 800 },
+        extraHTTPHeaders: {
+          "Accept-Language": "mn-MN,mn;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
       });
       const page = await ctx.newPage();
 
       await page.goto(`${LIST_URL}?page=${pageNum}`, {
         waitUntil: "networkidle",
-        timeout: 30_000,
+        timeout:   30_000,
       });
 
-      // Wait for at least one row to appear.
-      await page.waitForSelector(ROW_SELECTOR, { timeout: 15_000 });
+      await page.waitForSelector(SEL.ROW, { timeout: 15_000 });
 
-      const raw = await page.$$eval(ROW_SELECTOR, extractRows);
+      // Randomised post-load delay — reduces burst pressure; allows lazy content to settle.
+      await page.waitForTimeout(1_000 + Math.random() * 2_000);
 
-      // TODO: Adjust the "has next page" detection to match the actual pagination.
-      // Common patterns: disabled "next" button, absence of the button, or
-      // the current page number equalling the last-page number shown.
-      const hasNext =
-        (await page.$(".pagination .next:not(.disabled)")) !== null ||
-        (await page.$("[data-page-next]:not([disabled])")) !== null;
+      // extractRows is passed directly — it is serialised into the page context by
+      // Playwright. It must remain self-contained (no outer-scope references).
+      const raw = await page.$$eval(SEL.ROW, extractRows);
+
+      const hasNext = (await page.$(SEL.NEXT_PAGE)) !== null;
 
       return {
         raw,
@@ -131,9 +136,10 @@ export const tenderGovMnSource: Source<RawTender, TenderRecord> = {
   },
 
   parse(raw) {
-    const externalId = raw.tenderNo
-      ? normalizeText(raw.tenderNo)
-      : raw.detailPath.split("/").filter(Boolean).pop() ?? "";
+    const tenderNo = raw.tenderNo ? normalizeText(raw.tenderNo) : null;
+    const detailSlug =
+      raw.detailPath.split("/").filter(Boolean).pop() ?? "";
+    const externalId = tenderNo ?? detailSlug;
 
     if (!externalId) {
       throw new Error(
@@ -143,34 +149,20 @@ export const tenderGovMnSource: Source<RawTender, TenderRecord> = {
 
     return {
       externalId,
-      tenderNo: raw.tenderNo ? normalizeText(raw.tenderNo) : null,
-      procuringEntity: raw.procuringEntity
-        ? normalizeText(raw.procuringEntity)
-        : null,
-      category: raw.category ? normalizeText(raw.category) : null,
-      estBudgetMnt: raw.estBudgetMnt ? parseMnt(raw.estBudgetMnt) : null,
-      announceDate: raw.announceDate ? parseMnDate(raw.announceDate) : null,
-      submissionDeadline: raw.submissionDeadline
-        ? parseMnDate(raw.submissionDeadline)
-        : null,
-      bidSecurityMnt: raw.bidSecurityMnt ? parseMnt(raw.bidSecurityMnt) : null,
-      aimag: raw.aimag ? normalizeText(raw.aimag) : null,
-      status: raw.status ? normalizeText(raw.status) : "announced",
-      raw: raw as unknown as Record<string, unknown>,
+      tenderNo,
+      procuringEntity:    raw.procuringEntity ? normalizeText(raw.procuringEntity) : null,
+      category:           raw.category ? normalizeText(raw.category) : null,
+      estBudgetMnt:       raw.estBudgetMnt ? parseMnt(raw.estBudgetMnt) : null,
+      announceDate:       raw.announceDate ? parseMnDate(raw.announceDate) : null,
+      submissionDeadline: raw.submissionDeadline ? parseMnDate(raw.submissionDeadline) : null,
+      bidSecurityMnt:     raw.bidSecurityMnt ? parseMnt(raw.bidSecurityMnt) : null,
+      aimag:              raw.aimag ? normalizeText(raw.aimag) : null,
+      status:             raw.status ? normalizeText(raw.status) : "announced",
+      fetchedVia:         "playwright",
+      raw:                raw as unknown as Record<string, unknown>,
     };
   },
 
-  schema: TenderRecordSchema,
-
-  contentHash(r) {
-    // Hash canonical business fields only — never include scrape timestamps.
-    const canonical = [
-      r.tenderNo ?? "",
-      r.procuringEntity ?? "",
-      r.submissionDeadline?.toISOString() ?? "",
-      r.estBudgetMnt ?? "",
-      r.status,
-    ].join("|");
-    return sha256(canonical);
-  },
+  schema:      TenderRecordSchema,
+  contentHash: tenderContentHash,
 };
