@@ -2,6 +2,7 @@
 import PgBoss from "pg-boss";
 import type { PipelineDb } from "@mn-platform/core";
 import { makeScrapeHandler } from "./jobs/scrape-tender-gov-mn.js";
+import { makeAlertDispatchHandler } from "./jobs/alert-dispatch.js";
 import { logger } from "./logger.js";
 import type { WorkerState } from "./types.js";
 
@@ -23,13 +24,10 @@ export async function registerJobs(
   );
 
   // ── alert.dispatch ──────────────────────────────────────────────────────────
-  // Stub — replaced by alert-pipeline plan
   await boss.work(
     "alert.dispatch",
     { batchSize: 5 },
-    async (_jobs: PgBoss.Job<unknown>[]) => {
-      logger.warn({ event: "alert_dispatch_stub" }, "alert.dispatch stub: not yet implemented");
-    },
+    makeAlertDispatchHandler(),
   );
 
   // ── export.generate ─────────────────────────────────────────────────────────
