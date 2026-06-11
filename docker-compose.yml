@@ -1,0 +1,9 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: always
+    env_file: .env
+    ports:
+      - "9090:9090"
