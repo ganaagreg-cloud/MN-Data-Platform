@@ -1,10 +1,24 @@
 // apps/worker/src/scheduler.ts
 import PgBoss from "pg-boss";
-import type { PipelineDb } from "@mn-platform/core";
-import { makeScrapeHandler } from "./jobs/scrape-tender-gov-mn.js";
+import { runPipeline } from "@mn-platform/core";
+import type { PipelineDb, Source, TenderRecord } from "@mn-platform/core";
+import { tenderGovMnSource } from "./sources/tender-gov-mn.js";
+import { openDataTenderSource } from "./sources/opendata-tender-gov-mn.js";
 import { makeAlertDispatchHandler } from "./jobs/alert-dispatch.js";
 import { logger } from "./logger.js";
 import type { WorkerState } from "./types.js";
+
+type TenderAdapter = "playwright" | "api";
+
+function resolveTenderAdapter(): TenderAdapter {
+  const raw = process.env["TENDER_ADAPTER"] ?? "playwright";
+  if (raw !== "playwright" && raw !== "api") {
+    throw new Error(
+      `TENDER_ADAPTER must be "playwright" or "api", got "${raw}"`,
+    );
+  }
+  return raw;
+}
 
 export async function registerJobs(
   boss: PgBoss,
@@ -12,15 +26,23 @@ export async function registerJobs(
   state: WorkerState,
 ): Promise<void> {
   // ── scrape.tender-gov-mn ────────────────────────────────────────────────────
+  // Validate at startup — throws immediately if TENDER_ADAPTER is misconfigured.
+  const adapter = resolveTenderAdapter();
+  const tenderSource: Source<unknown, TenderRecord> =
+    adapter === "playwright" ? tenderGovMnSource : openDataTenderSource;
+
   await boss.schedule("scrape.tender-gov-mn", "0 */2 * * *", undefined, {
     tz: "Asia/Ulaanbaatar",
   });
 
-  // pg-boss v10 uses batchSize (jobs fetched per poll) instead of localConcurrency
   await boss.work(
     "scrape.tender-gov-mn",
     { batchSize: 2 },
-    makeScrapeHandler(db, state),
+    async (_jobs: PgBoss.Job<unknown>[]) => {
+      const result = await runPipeline(tenderSource, db);
+      state.lastRunAt = new Date();
+      logger.info({ ...result, adapter, event: "scrape_complete" });
+    },
   );
 
   // ── alert.dispatch ──────────────────────────────────────────────────────────
@@ -39,5 +61,5 @@ export async function registerJobs(
     },
   );
 
-  logger.info("all jobs registered");
+  logger.info({ adapter, event: "jobs_registered" }, "all jobs registered");
 }
