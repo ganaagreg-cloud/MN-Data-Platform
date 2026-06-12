@@ -4,3 +4,11 @@ packages:
 allowBuilds:
   esbuild: true
   sharp: true
+overrides:
+  drizzle-orm: "0.41.0"
+peerDependencyRules:
+  ignoreMissing:
+    - gel
+    - pg
+    - postgres
+    - "@opentelemetry/api"
