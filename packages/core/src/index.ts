@@ -2,5 +2,7 @@
 export type { Source, TenderRecord, ListingRecord, PipelineResult, UpsertOutcome } from "./types.js";
 export { runPipeline } from "./pipeline.js";
 export type { PipelineDb } from "./pipeline.js";
+export { runListingPipeline } from "./listing-pipeline.js";
+export type { ListingPipelineDb } from "./listing-pipeline.js";
 export { sha256 } from "./hash.js";
 export { RateLimiter, getRateLimiter } from "./rate-limiter.js";
