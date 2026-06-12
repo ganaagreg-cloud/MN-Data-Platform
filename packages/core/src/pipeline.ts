@@ -28,7 +28,7 @@ export async function runPipeline<TRaw, TRecord extends TenderRecord>(
     for (const rawRow of raw) {
       try {
         const record = source.parse(rawRow);
-        const validated = source.schema.parse(record) as TRecord;
+        const validated = source.schema.parse(record);
 
         if (source.filter && !source.filter(validated)) {
           skipped++;
