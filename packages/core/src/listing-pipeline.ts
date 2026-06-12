@@ -9,8 +9,8 @@ export interface ListingPipelineDb {
   ): Promise<UpsertOutcome>;
 }
 
-export async function runListingPipeline<TRaw>(
-  source: Source<TRaw, ListingRecord>,
+export async function runListingPipeline<TRaw, TRecord extends ListingRecord>(
+  source: Source<TRaw, TRecord>,
   db: ListingPipelineDb,
 ): Promise<PipelineResult> {
   const start = Date.now();
