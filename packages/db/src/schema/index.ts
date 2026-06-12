@@ -112,6 +112,7 @@ export const listings = pgTable(
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
     raw: jsonb("raw").notNull(),
+    listingType: text("listing_type", { enum: ["sale", "rent"] }).notNull(),
     district: text("district"),
     khoroo: text("khoroo"),
     rooms: integer("rooms"),
@@ -127,6 +128,7 @@ export const listings = pgTable(
     index("listings_district_idx").on(t.district),
     index("listings_price_per_m2_idx").on(t.pricePerM2),
     index("listings_created_at_idx").on(t.createdAt),
+    index("listings_type_district_idx").on(t.listingType, t.district),
   ],
 );
 

@@ -1,0 +1,2 @@
+ALTER TABLE "listings" ADD COLUMN "listing_type" text NOT NULL CHECK (listing_type IN ('sale', 'rent'));--> statement-breakpoint
+CREATE INDEX "listings_type_district_idx" ON "listings" USING btree ("listing_type","district");
