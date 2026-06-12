@@ -91,6 +91,6 @@ Keep a `## Progress` log at the bottom of this file: what's done, what's mid-fli
 - [x] pg-boss worker boot + graceful shutdown, health check HTTP server, job handlers (scrape, alert, export), pg-boss scheduler.
 - [x] Docker setup — two-stage Dockerfile, .dockerignore, docker-compose.yml. Builds successfully with mn-worker:local image (312MB). Node.js 22-slim + system deps for Playwright+Chromium.
 - [ ] Alert pipeline (email) — Plan 2 ready, execute next
-- [ ] tender.gov.mn Playwright adapter replacement + opendata stub — Plan 3 ready, execute after Plan 2
-- [ ] First `unegui`-class GazarPrice adapter (aggregate-only)
+- [x] tender.gov.mn Playwright adapter replacement + opendata stub — TENDER_ADAPTER env flag, fetchedVia provenance, opendata stub with token check. Plan 3 complete.
+- [x] GazarPrice unegui.mn adapter — ListingRecord (number|null), runListingPipeline, filter? on Source, listings.listing_type migration (0003, NOT NULL + CHECK), uneguiSaleSource + uneguiRentSource (Playwright, UB-only filter), upsertListing in db-adapter, Sentry try/catch on all 3 scrape handlers. 40 tests pass. Plan 4 complete.
 - [ ] QPay subscription flow
