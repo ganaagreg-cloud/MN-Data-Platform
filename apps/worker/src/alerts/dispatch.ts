@@ -18,10 +18,19 @@ export async function dispatchAlert(
     return;
   }
 
+  // Extract to a local const so the non-null narrowing persists across the
+  // `await` below (narrowing a nested property like `user.orgId` directly
+  // does not reliably survive an await).
+  const orgId = user.orgId;
+  if (!orgId) {
+    logger.warn({ userId: payload.userId }, "dispatchAlert: user has no org — skipping");
+    return;
+  }
+
   // Step 1b: load subscription for user's org
   const subscription = await db.query.subscriptions.findFirst({
     where: and(
-      eq(subscriptions.orgId, user.orgId),
+      eq(subscriptions.orgId, orgId),
     ),
   });
   if (!subscription) {
@@ -53,7 +62,7 @@ export async function dispatchAlert(
   // Step 5: build recipient (exactOptionalPropertyTypes — omit absent fields)
   const recipient: import("./types.js").Recipient = {
     userId: user.id,
-    email:  user.email,
+    ...(user.email          != null && { email:          user.email }),
     ...(user.telegramChatId != null && { telegramChatId: user.telegramChatId }),
     ...(user.phone          != null && { phone:          user.phone }),
   };
@@ -69,6 +78,10 @@ export async function dispatchAlert(
     }
 
     // Channel gates
+    if (channel === "email" && !recipient.email) {
+      logger.info({ userId: user.id }, "dispatchAlert: email not set — skipping email");
+      continue;
+    }
     if (channel === "telegram" && !recipient.telegramChatId) {
       logger.info({ userId: user.id }, "dispatchAlert: telegram_chat_id not set — skipping telegram");
       continue;

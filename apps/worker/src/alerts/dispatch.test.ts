@@ -116,4 +116,35 @@ describe("dispatchAlert", () => {
     await dispatchAlert(payload, [emailProvider]);
     expect(emailProvider.send).not.toHaveBeenCalled();
   });
+
+  it("skips dispatch entirely when the user has no org", async () => {
+    const { db } = await import("@mn-platform/db");
+    (db.query.users.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "user-1", orgId: null, email: "test@example.com", telegramChatId: null, phone: null,
+    });
+
+    const emailProvider = makeProvider("email");
+    await dispatchAlert(payload, [emailProvider]);
+
+    expect(emailProvider.send).not.toHaveBeenCalled();
+    expect(insertNotificationSent).not.toHaveBeenCalled();
+  });
+
+  it("skips the email channel when user.email is null, but still dispatches other channels", async () => {
+    const { db } = await import("@mn-platform/db");
+    (db.query.users.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "user-1", orgId: "org-1", email: null, telegramChatId: "chat-1", phone: null,
+    });
+    (db.query.subscriptions.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "sub-1", orgId: "org-1", status: "active",
+      alertChannels: ["email", "telegram"], modules: ["tender"],
+    });
+
+    const emailProvider = makeProvider("email");
+    const telegramProvider = makeProvider("telegram");
+    await dispatchAlert(payload, [emailProvider, telegramProvider]);
+
+    expect(emailProvider.send).not.toHaveBeenCalled();
+    expect(telegramProvider.send).toHaveBeenCalledOnce();
+  });
 });
