@@ -1,4 +1,6 @@
 import {
+  bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -24,21 +26,27 @@ export const organizations = pgTable("organizations", {
 });
 
 // ── users ─────────────────────────────────────────────────────────────────────
+// org_id/email are nullable: Telegram-only users have neither until they're
+// added to an org (B2B overlay) or set an email. telegram_id is the identity
+// for the bot deep-link login flow (see auth_tokens below).
 export const users = pgTable(
   "users",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    orgId: uuid("org_id")
-      .references(() => organizations.id)
-      .notNull(),
-    email: text("email").notNull(),
+    orgId: uuid("org_id").references(() => organizations.id),
+    email: text("email"),
     name: text("name"),
+    telegramId: bigint("telegram_id", { mode: "number" }),
+    telegramUsername: text("telegram_username"),
+    firstName: text("first_name"),
     telegramChatId: text("telegram_chat_id"),
     phone: text("phone"),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("users_email_idx").on(t.email),
+    uniqueIndex("users_telegram_id_idx").on(t.telegramId),
     index("users_org_id_idx").on(t.orgId),
   ],
 );
@@ -124,7 +132,7 @@ export const listings = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex("listings_source_external_idx").on(t.sourceId, t.externalId),
+    uniqueIndex("listings_source_external_type_idx").on(t.sourceId, t.externalId, t.listingType),
     index("listings_district_idx").on(t.district),
     index("listings_price_per_m2_idx").on(t.pricePerM2),
     index("listings_created_at_idx").on(t.createdAt),
@@ -157,3 +165,15 @@ export const notificationsSent = pgTable(
     index("notifications_sent_user_idx").on(t.userId),
   ],
 );
+
+// ── auth_tokens ──────────────────────────────────────────────────────────────
+// Login handshake for the Telegram bot deep-link flow. token is the random
+// 32-char hex value embedded in t.me/{BOT_USERNAME}?start=auth_{token}; the
+// webhook attaches telegram_id and sets consumed=true once claimed.
+export const authTokens = pgTable("auth_tokens", {
+  token: text("token").primaryKey(),
+  telegramId: bigint("telegram_id", { mode: "number" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumed: boolean("consumed").notNull().default(false),
+});
