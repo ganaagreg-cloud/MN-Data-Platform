@@ -1,0 +1,28 @@
+-- Fix false change-detection alerts caused by sale/rent ID collisions.
+--
+-- unegui.mn publishes the same numeric listing ID on both its sale and
+-- rent feeds (e.g. listing #12345 can appear as a sale AND a rent ad).
+-- The old unique index on (source_id, external_id) treated those as the
+-- SAME row, so upserting the second feed overwrote listing_type (and every
+-- other column) on the first feed's row in place — corrupting that row's
+-- data and firing a spurious "content changed" alert.
+--
+-- Before applying this migration, check for rows already affected by the
+-- bug above:
+--
+--   SELECT source_id, external_id, listing_type, COUNT(*)
+--   FROM listings
+--   GROUP BY 1, 2, 3
+--   HAVING COUNT(*) > 1;
+--
+-- Because (source_id, external_id) was already unique, this returns no rows
+-- by construction — that's expected. The real collision victims are
+-- (source_id, external_id) pairs that exist on BOTH the unegui.mn sale and
+-- rent feeds but have only ONE row in `listings`: the missing sale/rent
+-- counterpart was overwritten and needs manual review (re-scrape to recover
+-- the lost side).
+--
+-- Going forward, the new 3-column unique index lets sale and rent rows for
+-- the same external_id coexist as separate rows.
+DROP INDEX "listings_source_external_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "listings_source_external_type_idx" ON "listings" USING btree ("source_id","external_id","listing_type");
