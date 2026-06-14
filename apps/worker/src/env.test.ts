@@ -7,6 +7,7 @@ const ENV_KEYS = [
   "GIT_SHA",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",
+  "CRAWLBASE_TOKEN",
 ] as const;
 const original: Partial<Record<(typeof ENV_KEYS)[number], string>> = {};
 for (const key of ENV_KEYS) {
@@ -20,6 +21,7 @@ function setValidEnv(): void {
   process.env["SENTRY_DSN"] = "https://examplePublicKey@o0.ingest.sentry.io/0";
   process.env["TELEGRAM_BOT_TOKEN"] = "test-bot-token";
   process.env["TELEGRAM_CHAT_ID"] = "test-chat-id";
+  process.env["CRAWLBASE_TOKEN"] = "test-crawlbase-token";
 }
 
 afterEach(() => {
@@ -59,6 +61,13 @@ describe("env", () => {
     await expect(import("./env.js")).rejects.toThrow();
   });
 
+  it("throws when CRAWLBASE_TOKEN is missing", async () => {
+    setValidEnv();
+    delete process.env["CRAWLBASE_TOKEN"];
+
+    await expect(import("./env.js")).rejects.toThrow();
+  });
+
   it("parses a valid env and defaults NODE_ENV", async () => {
     setValidEnv();
     delete process.env["NODE_ENV"];
@@ -71,6 +80,7 @@ describe("env", () => {
     expect(env.GIT_SHA).toBeUndefined();
     expect(env.TELEGRAM_BOT_TOKEN).toBe("test-bot-token");
     expect(env.TELEGRAM_CHAT_ID).toBe("test-chat-id");
+    expect(env.CRAWLBASE_TOKEN).toBe("test-crawlbase-token");
   });
 
   it("passes through NODE_ENV and GIT_SHA when set", async () => {

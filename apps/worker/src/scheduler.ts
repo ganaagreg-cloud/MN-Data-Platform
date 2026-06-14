@@ -17,13 +17,13 @@ import { makeAlertDispatchHandler } from "./jobs/alert-dispatch.js";
 import { logger } from "./logger.js";
 import type { WorkerState } from "./types.js";
 
-type TenderAdapter = "playwright" | "api";
+type TenderAdapter = "scrape" | "api";
 
 function resolveTenderAdapter(): TenderAdapter {
-  const raw = process.env["TENDER_ADAPTER"] ?? "playwright";
-  if (raw !== "playwright" && raw !== "api") {
+  const raw = process.env["TENDER_ADAPTER"] ?? "scrape";
+  if (raw !== "scrape" && raw !== "api") {
     throw new Error(
-      `TENDER_ADAPTER must be "playwright" or "api", got "${raw}"`,
+      `TENDER_ADAPTER must be "scrape" or "api", got "${raw}"`,
     );
   }
   return raw;
@@ -98,7 +98,7 @@ export async function registerJobs(
   // ── scrape.tender-gov-mn ────────────────────────────────────────────────────
   const adapter = resolveTenderAdapter();
   const tenderSource: Source<unknown, TenderRecord> =
-    adapter === "playwright" ? tenderGovMnSource : openDataTenderSource;
+    adapter === "scrape" ? tenderGovMnSource : openDataTenderSource;
 
   await boss.schedule("scrape.tender-gov-mn", "0 */2 * * *", undefined, {
     tz: "Asia/Ulaanbaatar",

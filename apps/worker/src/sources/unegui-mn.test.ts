@@ -1,5 +1,6 @@
 // apps/worker/src/sources/unegui-mn.test.ts
 import { describe, it, expect, vi, afterEach } from "vitest";
+import * as cheerio from "cheerio";
 
 vi.mock("@sentry/node", () => ({
   captureMessage: vi.fn(),
@@ -92,20 +93,20 @@ describe("checkListingContainer", () => {
     vi.clearAllMocks();
   });
 
-  it("returns true when the container selector is present", async () => {
-    const page = { $: vi.fn().mockResolvedValue({}) };
+  it("returns true when the container selector is present", () => {
+    const $ = cheerio.load('<div class="list-announcement-block">listing</div>');
 
-    const found = await checkListingContainer(page, "https://example.com/?page=1");
+    const found = checkListingContainer($, "https://example.com/?page=1");
 
     expect(found).toBe(true);
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
-  it("returns false, warns, and reports to Sentry when the container selector is missing", async () => {
-    const page = { $: vi.fn().mockResolvedValue(null) };
+  it("returns false, warns, and reports to Sentry when the container selector is missing", () => {
+    const $ = cheerio.load("<div>no listings here</div>");
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
 
-    const found = await checkListingContainer(page, "https://example.com/?page=1");
+    const found = checkListingContainer($, "https://example.com/?page=1");
 
     expect(found).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(

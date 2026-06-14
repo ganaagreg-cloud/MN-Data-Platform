@@ -27,7 +27,7 @@ export interface TenderRecord {
   aimag: string | null;
   status: string;
   /**
-   * Which adapter wrote this record ("playwright" | "api" | future).
+   * Which adapter wrote this record ("crawlbase" | "api" | future).
    * Excluded from contentHash — switching adapters must not trigger re-alerts.
    */
   fetchedVia: string;

@@ -3,20 +3,20 @@
 // Source adapter — unegui.mn apartment listings (sale + rent), UB only.
 //
 // robots.txt: MUST verify https://www.unegui.mn/robots.txt before first live run.
-// Rendering: JS — Playwright + Chromium.
+// Rendering: JS — Crawlbase Crawling API (rendered HTML) + cheerio.
 // Rate limit: getRateLimiter("unegui.mn") — shared for both sale and rent (same domain).
 // User-Agent: honest (GazarPrice/1.0). No spoofing, no rotation.
 // Compliance: store structured fields only — no description text, photos, or copyrighted content.
 
-import { chromium } from "playwright";
-import * as Sentry from "@sentry/node";
-import { getRateLimiter } from "@mn-platform/core";
+import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
+import { fetchRenderedHtml, getRateLimiter } from "@mn-platform/core";
 import { normalizeDistrict, normalizeText, parseMnt } from "@mn-platform/mn";
 import type { Source, ListingRecord } from "@mn-platform/core";
 import { ListingRecordSchema, listingContentHash } from "./listing-schema.js";
-import { logger } from "../logger.js";
+import { selectorPresent } from "./selector-guard.js";
 
-// ── raw shape scraped from the DOM ────────────────────────────────────────────
+// ── raw shape scraped from the page ───────────────────────────────────────────
 
 interface RawListing {
   price:      string;
@@ -40,7 +40,7 @@ const USER_AGENT = "GazarPrice/1.0 (+https://gazarprice.mn; info@gazarprice.mn)"
 const limiter = getRateLimiter("unegui.mn");
 
 /**
- * DOM selectors — update after a single browser-devtools session on
+ * CSS selectors — update after a single browser-devtools session on
  * https://www.unegui.mn/l-hdlh/l-hdlh-zarna/ulaanbaatar/
  * All TODOs co-located so one inspect pass wires both adapters completely.
  */
@@ -49,20 +49,15 @@ const SEL = {
   NEXT_PAGE: ".pager__item--next:not(.disabled)",      // TODO: verify pagination pattern
 } as const;
 
-// ── DOM extraction (runs inside browser via $$eval) ───────────────────────────
-// Must be a self-contained function — no outer-scope references.
-// Playwright serialises this function body into the page context.
+// ── HTML extraction (cheerio) ──────────────────────────────────────────────────
 // Store only structured fields — never description text or image URLs.
-// Return type is inlined (cannot reference outer-scope RawListing in serialised fn body).
 
-function extractRows(els: Element[]): Array<{
-  price: string; rooms: string; area: string; floor: string;
-  district: string; khoroo: string; building: string; detailPath: string;
-}> {
-  return els.map((el) => {
-    const text = (sel: string) => el.querySelector(sel)?.textContent?.trim() ?? "";
-    const link  = el.querySelector("a[href]");
-    return {
+function extractRows($: CheerioAPI): RawListing[] {
+  const rows: RawListing[] = [];
+  $(SEL.CARD).each((_i, el) => {
+    const $el = $(el);
+    const text = (sel: string) => $el.find(sel).first().text().trim();
+    rows.push({
       price:      text(".price-title"),          // TODO: adjust after live inspect
       rooms:      text(".rooms-char"),            // TODO: adjust
       area:       text(".area-char"),             // TODO: adjust
@@ -70,9 +65,10 @@ function extractRows(els: Element[]): Array<{
       district:   text(".district-char"),         // TODO: adjust
       khoroo:     text(".khoroo-char"),           // TODO: adjust
       building:   text(".building-char"),         // TODO: adjust
-      detailPath: link?.getAttribute("href") ?? "",
-    };
+      detailPath: $el.find("a[href]").first().attr("href") ?? "",
+    });
   });
+  return rows;
 }
 
 // ── shared parse logic ────────────────────────────────────────────────────────
@@ -114,25 +110,15 @@ function parseListing(raw: RawListing, listingType: "sale" | "rent"): ListingRec
 }
 
 // ── selector-drift guard ────────────────────────────────────────────────────
-// page.waitForSelector() throws on timeout, which would fail the whole job
-// over a single layout change. Check with $() instead: report and return
-// false so fetchPage() can degrade to "0 listings this page" and continue.
+// A missing container selector usually means the site's markup changed, not
+// that there are zero results — report it and degrade to "0 listings this
+// page" so fetchPage() can continue rather than failing the whole job.
 
-interface PageLike {
-  $(selector: string): Promise<unknown>;
-}
-
-export async function checkListingContainer(page: PageLike, url: string): Promise<boolean> {
-  const container = await page.$(SEL.CARD);
-  if (container === null) {
-    logger.warn({ url }, "listing container not found — selector may have changed");
-    Sentry.captureMessage("Unegui selector not found", {
-      level: "warning",
-      extra: { url },
-    });
-    return false;
-  }
-  return true;
+export function checkListingContainer($: CheerioAPI, url: string): boolean {
+  return selectorPresent($, SEL.CARD, url, {
+    sourceLabel: "Unegui",
+    message: "listing container not found — selector may have changed",
+  });
 }
 
 // ── fetchPage (shared, parameterised by URL) ──────────────────────────────────
@@ -144,42 +130,18 @@ async function fetchListingPage(
   const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
   await limiter.acquire();
 
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const ctx = await browser.newContext({
-      userAgent:  USER_AGENT,
-      locale:     "mn-MN",
-      timezoneId: "Asia/Ulaanbaatar",
-      viewport:   { width: 1280, height: 800 },
-      extraHTTPHeaders: {
-        "Accept-Language": "mn-MN,mn;q=0.9,en-US;q=0.8,en;q=0.7",
-      },
-    });
-    const page = await ctx.newPage();
+  const pageUrl = `${url}?page=${pageNum}`;
+  const html = await fetchRenderedHtml(pageUrl, { pageWaitMs: 3_000, userAgent: USER_AGENT });
+  const $ = cheerio.load(html);
 
-    const pageUrl = `${url}?page=${pageNum}`;
-    await page.goto(pageUrl, {
-      waitUntil: "networkidle",
-      timeout:   30_000,
-    });
-    // Give slow-rendering content up to 15s to appear. Swallow the timeout —
-    // checkListingContainer() below decides whether to proceed or bail.
-    await page.waitForSelector(SEL.CARD, { timeout: 15_000 }).catch(() => null);
-
-    if (!(await checkListingContainer(page, pageUrl))) {
-      return { raw: [] };
-    }
-
-    // Randomised post-load delay — reduces burst pressure; allows lazy content to settle.
-    await page.waitForTimeout(1_000 + Math.random() * 2_000);
-
-    const raw     = (await page.$$eval(SEL.CARD, extractRows)) as RawListing[];
-    const hasNext = (await page.$(SEL.NEXT_PAGE)) !== null;
-
-    return { raw, ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}) };
-  } finally {
-    await browser.close();
+  if (!checkListingContainer($, pageUrl)) {
+    return { raw: [] };
   }
+
+  const raw     = extractRows($);
+  const hasNext = $(SEL.NEXT_PAGE).length > 0;
+
+  return { raw, ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}) };
 }
 
 // ── exported sources ──────────────────────────────────────────────────────────

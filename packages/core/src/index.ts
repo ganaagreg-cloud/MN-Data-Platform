@@ -6,3 +6,5 @@ export { sha256 } from "./hash.js";
 export { RateLimiter, getRateLimiter } from "./rate-limiter.js";
 export { sendTelegramMessage, sendTelegramMessageTo, formatListingAlert, formatTenderAlert } from "./notifications/telegram.js";
 export type { ListingAlertInput, TenderAlertInput } from "./notifications/telegram.js";
+export { fetchRenderedHtml } from "./crawlbase.js";
+export type { FetchRenderedHtmlOptions } from "./crawlbase.js";

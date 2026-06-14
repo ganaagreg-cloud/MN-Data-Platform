@@ -7,6 +7,7 @@ const envSchema = z.object({
   GIT_SHA: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_CHAT_ID: z.string().min(1),
+  CRAWLBASE_TOKEN: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

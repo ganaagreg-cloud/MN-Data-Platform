@@ -13,7 +13,7 @@ const base: TenderRecord = {
   bidSecurityMnt:     "50000.00",
   aimag:              "УБ",
   status:             "announced",
-  fetchedVia:         "playwright",
+  fetchedVia:         "crawlbase",
   raw:                {},
 };
 
@@ -28,9 +28,9 @@ describe("tenderContentHash", () => {
   });
 
   it("is identical regardless of fetchedVia value", () => {
-    const playwright = { ...base, fetchedVia: "playwright" };
+    const crawlbase = { ...base, fetchedVia: "crawlbase" };
     const api        = { ...base, fetchedVia: "api" };
-    expect(tenderContentHash(playwright)).toBe(tenderContentHash(api));
+    expect(tenderContentHash(crawlbase)).toBe(tenderContentHash(api));
   });
 });
 
