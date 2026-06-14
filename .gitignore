@@ -8,3 +8,4 @@ dist/
 *.log
 *.tsbuildinfo
 .claude/
+.playwright-mcp/

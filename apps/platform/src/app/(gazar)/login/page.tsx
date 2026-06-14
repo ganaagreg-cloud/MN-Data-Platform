@@ -1,29 +1,27 @@
 // apps/platform/src/app/(gazar)/login/page.tsx
 import { redirect } from "next/navigation";
-import { db, authTokens } from "@mn-platform/db";
+import { auth } from "@/auth";
 import { env } from "@/env";
-import { getSession } from "@/lib/session";
-import { AUTH_TOKEN_TTL_MS, generateAuthToken } from "@/lib/auth-tokens";
-import { LoginPoller } from "./login-poller";
+import { parsePlan } from "@/lib/plans";
+import { TelegramLoginButton } from "@/components/telegram-login-button";
 
-export default async function LoginPage() {
-  const session = await getSession();
-  if (session) redirect("/dashboard");
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const session = await auth();
+  const plan = parsePlan((await searchParams).plan);
 
-  const token = generateAuthToken();
-  await db.insert(authTokens).values({
-    token,
-    expiresAt: new Date(Date.now() + AUTH_TOKEN_TTL_MS),
-  });
-
-  const deepLink = `https://t.me/${env.BOT_USERNAME}?start=auth_${token}`;
+  if (session) {
+    redirect(plan ? `/dashboard?plan=${plan}` : "/dashboard");
+  }
 
   return (
     <main>
       <h1>Нэвтрэх</h1>
       <p>Telegram ашиглан нэвтэрнэ үү.</p>
-      <a href={deepLink}>Telegram-ээр нэвтрэх</a>
-      <LoginPoller token={token} />
+      <TelegramLoginButton botUsername={env.BOT_USERNAME} plan={plan} />
     </main>
   );
 }

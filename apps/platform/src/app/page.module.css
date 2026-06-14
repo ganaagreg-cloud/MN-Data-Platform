@@ -76,8 +76,3 @@
 .pricingFilledCta:hover {
   background: #ffd66b !important;
 }
-
-.tgLoginBtn:hover:not(:disabled) {
-  background: #2baae5 !important;
-  transform: translateY(-2px) !important;
-}

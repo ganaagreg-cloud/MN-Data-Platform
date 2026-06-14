@@ -43,6 +43,13 @@
       "when": 1781363711823,
       "tag": "0005_charming_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781461464842,
+      "tag": "0006_optimal_gideon",
+      "breakpoints": true
     }
   ]
 }

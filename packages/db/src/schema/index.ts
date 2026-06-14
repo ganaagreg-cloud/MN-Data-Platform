@@ -1,6 +1,5 @@
 import {
   bigint,
-  boolean,
   index,
   integer,
   jsonb,
@@ -26,9 +25,9 @@ export const organizations = pgTable("organizations", {
 });
 
 // ── users ─────────────────────────────────────────────────────────────────────
-// org_id/email are nullable: Telegram-only users have neither until they're
-// added to an org (B2B overlay) or set an email. telegram_id is the identity
-// for the bot deep-link login flow (see auth_tokens below).
+// org_id is populated automatically: a personal organization is created on first
+// login (see upsertTelegramUser). email stays nullable/unused until the optional
+// B2B overlay. telegram_id is the identity for the Telegram Login Widget flow.
 export const users = pgTable(
   "users",
   {
@@ -165,15 +164,3 @@ export const notificationsSent = pgTable(
     index("notifications_sent_user_idx").on(t.userId),
   ],
 );
-
-// ── auth_tokens ──────────────────────────────────────────────────────────────
-// Login handshake for the Telegram bot deep-link flow. token is the random
-// 32-char hex value embedded in t.me/{BOT_USERNAME}?start=auth_{token}; the
-// webhook attaches telegram_id and sets consumed=true once claimed.
-export const authTokens = pgTable("auth_tokens", {
-  token: text("token").primaryKey(),
-  telegramId: bigint("telegram_id", { mode: "number" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumed: boolean("consumed").notNull().default(false),
-});

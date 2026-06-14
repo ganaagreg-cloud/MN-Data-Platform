@@ -6,7 +6,8 @@ const ENV_KEYS = [
   "DATABASE_URL_DIRECT",
   "TELEGRAM_BOT_TOKEN",
   "BOT_USERNAME",
-  "SESSION_SECRET",
+  "AUTH_SECRET",
+  "ADMIN_TELEGRAM_IDS",
   "NODE_ENV",
 ] as const;
 const original: Partial<Record<(typeof ENV_KEYS)[number], string>> = {};
@@ -24,7 +25,7 @@ function setValidEnv(): void {
   process.env["DATABASE_URL_DIRECT"] = "postgres://test:test@localhost:5432/test";
   process.env["TELEGRAM_BOT_TOKEN"] = "test-bot-token";
   process.env["BOT_USERNAME"] = "TestBot";
-  process.env["SESSION_SECRET"] = "x".repeat(32);
+  process.env["AUTH_SECRET"] = "x".repeat(32);
 }
 
 afterEach(() => {
@@ -50,9 +51,9 @@ describe("env", () => {
     await expect(import("./env")).rejects.toThrow();
   });
 
-  it("throws when SESSION_SECRET is shorter than 32 characters", async () => {
+  it("throws when AUTH_SECRET is shorter than 32 characters", async () => {
     setValidEnv();
-    process.env["SESSION_SECRET"] = "too-short";
+    process.env["AUTH_SECRET"] = "too-short";
 
     await expect(import("./env")).rejects.toThrow();
   });
@@ -60,10 +61,36 @@ describe("env", () => {
   it("parses a valid env and defaults NODE_ENV", async () => {
     setValidEnv();
     delete mutableEnv["NODE_ENV"];
+    delete mutableEnv["ADMIN_TELEGRAM_IDS"];
 
     const { env } = await import("./env");
 
     expect(env.BOT_USERNAME).toBe("TestBot");
     expect(env.NODE_ENV).toBe("development");
+    expect(env.ADMIN_TELEGRAM_IDS).toBe("");
+  });
+});
+
+describe("isAdminTelegramId", () => {
+  it("returns false for everyone when ADMIN_TELEGRAM_IDS is empty", async () => {
+    setValidEnv();
+    delete mutableEnv["ADMIN_TELEGRAM_IDS"];
+
+    const { isAdminTelegramId } = await import("./env");
+
+    expect(isAdminTelegramId(12345)).toBe(false);
+    expect(isAdminTelegramId(null)).toBe(false);
+    expect(isAdminTelegramId(undefined)).toBe(false);
+  });
+
+  it("returns true only for IDs listed in ADMIN_TELEGRAM_IDS", async () => {
+    setValidEnv();
+    process.env["ADMIN_TELEGRAM_IDS"] = "111, 222";
+
+    const { isAdminTelegramId } = await import("./env");
+
+    expect(isAdminTelegramId(111)).toBe(true);
+    expect(isAdminTelegramId(222)).toBe(true);
+    expect(isAdminTelegramId(333)).toBe(false);
   });
 });
