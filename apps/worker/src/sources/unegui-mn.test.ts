@@ -1,6 +1,13 @@
 // apps/worker/src/sources/unegui-mn.test.ts
-import { describe, it, expect } from "vitest";
-import { uneguiSaleSource, uneguiRentSource } from "./unegui-mn.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+
+vi.mock("@sentry/node", () => ({
+  captureMessage: vi.fn(),
+}));
+
+import * as Sentry from "@sentry/node";
+import { uneguiSaleSource, uneguiRentSource, checkListingContainer } from "./unegui-mn.js";
+import { logger } from "../logger.js";
 
 const baseRaw = {
   price:      "150,000,000₮",
@@ -76,5 +83,38 @@ describe("parse — externalId", () => {
     expect(() => uneguiSaleSource.parse({ ...baseRaw, detailPath: "" })).toThrow(
       "no externalId",
     );
+  });
+});
+
+describe("checkListingContainer", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
+  it("returns true when the container selector is present", async () => {
+    const page = { $: vi.fn().mockResolvedValue({}) };
+
+    const found = await checkListingContainer(page, "https://example.com/?page=1");
+
+    expect(found).toBe(true);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("returns false, warns, and reports to Sentry when the container selector is missing", async () => {
+    const page = { $: vi.fn().mockResolvedValue(null) };
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    const found = await checkListingContainer(page, "https://example.com/?page=1");
+
+    expect(found).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      { url: "https://example.com/?page=1" },
+      "listing container not found — selector may have changed",
+    );
+    expect(Sentry.captureMessage).toHaveBeenCalledWith("Unegui selector not found", {
+      level: "warning",
+      extra: { url: "https://example.com/?page=1" },
+    });
   });
 });

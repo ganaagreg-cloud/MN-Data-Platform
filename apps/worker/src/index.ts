@@ -1,4 +1,6 @@
 // apps/worker/src/index.ts
+import "./instrument.js";
+
 import PgBoss from "pg-boss";
 import { createDbAdapter } from "./db-adapter.js";
 import { registerJobs } from "./scheduler.js";

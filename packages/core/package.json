@@ -20,6 +20,7 @@
     "vitest": "^3.2.6"
   },
   "dependencies": {
+    "@mn-platform/mn": "workspace:*",
     "zod": "^4.4.3"
   }
 }

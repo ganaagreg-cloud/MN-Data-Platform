@@ -9,11 +9,11 @@ export const ListingRecordSchema = z.object({
   district:    z.string().nullable(),
   khoroo:      z.string().nullable(),
   rooms:       z.number().int().nullable(),
-  areaM2:      z.number().positive().nullable(),
+  areaM2:      z.number().nonnegative().nullable(),
   floor:       z.number().int().nullable(),
   building:    z.string().nullable(),
-  priceMnt:    z.number().positive().nullable(),
-  pricePerM2:  z.number().positive().nullable(),
+  priceMnt:    z.number().nonnegative().nullable(),
+  pricePerM2:  z.number().nonnegative().nullable(),
   raw:         z.record(z.string(), z.unknown()),
 });
 
@@ -27,9 +27,30 @@ export function listingContentHash(r: ListingRecord): string {
     [
       r.listingType,
       r.district    ?? "",
+      r.khoroo      ?? "",
       r.rooms       ?? "",
       String(r.areaM2   ?? ""),
+      r.floor       ?? "",
+      r.building    ?? "",
       String(r.priceMnt ?? ""),
     ].join("|"),
   );
+}
+
+/**
+ * Logs a warning for listings scraped with a zero area or price — still
+ * upserted, but flagged since it often indicates selector drift on the source page.
+ */
+export function warnZeroValueListing(sourceId: string, record: ListingRecord): void {
+  if (record.areaM2 === 0 || record.priceMnt === 0) {
+    console.warn(
+      JSON.stringify({
+        source: sourceId,
+        event: "zero_value_listing",
+        externalId: record.externalId,
+        areaM2: record.areaM2,
+        priceMnt: record.priceMnt,
+      }),
+    );
+  }
 }

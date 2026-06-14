@@ -9,10 +9,12 @@
 // Compliance: store structured fields only — no description text, photos, or copyrighted content.
 
 import { chromium } from "playwright";
+import * as Sentry from "@sentry/node";
 import { getRateLimiter } from "@mn-platform/core";
 import { normalizeDistrict, normalizeText, parseMnt } from "@mn-platform/mn";
 import type { Source, ListingRecord } from "@mn-platform/core";
 import { ListingRecordSchema, listingContentHash } from "./listing-schema.js";
+import { logger } from "../logger.js";
 
 // ── raw shape scraped from the DOM ────────────────────────────────────────────
 
@@ -111,6 +113,28 @@ function parseListing(raw: RawListing, listingType: "sale" | "rent"): ListingRec
   };
 }
 
+// ── selector-drift guard ────────────────────────────────────────────────────
+// page.waitForSelector() throws on timeout, which would fail the whole job
+// over a single layout change. Check with $() instead: report and return
+// false so fetchPage() can degrade to "0 listings this page" and continue.
+
+interface PageLike {
+  $(selector: string): Promise<unknown>;
+}
+
+export async function checkListingContainer(page: PageLike, url: string): Promise<boolean> {
+  const container = await page.$(SEL.CARD);
+  if (container === null) {
+    logger.warn({ url }, "listing container not found — selector may have changed");
+    Sentry.captureMessage("Unegui selector not found", {
+      level: "warning",
+      extra: { url },
+    });
+    return false;
+  }
+  return true;
+}
+
 // ── fetchPage (shared, parameterised by URL) ──────────────────────────────────
 
 async function fetchListingPage(
@@ -133,11 +157,19 @@ async function fetchListingPage(
     });
     const page = await ctx.newPage();
 
-    await page.goto(`${url}?page=${pageNum}`, {
+    const pageUrl = `${url}?page=${pageNum}`;
+    await page.goto(pageUrl, {
       waitUntil: "networkidle",
       timeout:   30_000,
     });
-    await page.waitForSelector(SEL.CARD, { timeout: 15_000 });
+    // Give slow-rendering content up to 15s to appear. Swallow the timeout —
+    // checkListingContainer() below decides whether to proceed or bail.
+    await page.waitForSelector(SEL.CARD, { timeout: 15_000 }).catch(() => null);
+
+    if (!(await checkListingContainer(page, pageUrl))) {
+      return { raw: [] };
+    }
+
     // Randomised post-load delay — reduces burst pressure; allows lazy content to settle.
     await page.waitForTimeout(1_000 + Math.random() * 2_000);
 
