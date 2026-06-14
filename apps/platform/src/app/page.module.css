@@ -1,0 +1,83 @@
+@keyframes mnpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 193, 7, 0); }
+}
+
+@keyframes mnblink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes mndraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes mnfloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.mono {
+  font-family: var(--font-jbmono), monospace;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.reveal.revealed {
+  opacity: 1;
+  transform: none;
+}
+
+.pulseBadge {
+  animation: mnpulse 2s ease infinite;
+}
+
+.blinkDot {
+  animation: mnblink 1.4s ease infinite;
+}
+
+.drawLine {
+  animation: mndraw 1.7s ease 0.4s forwards;
+}
+
+.floatCard {
+  animation: mnfloat 6s ease-in-out infinite;
+}
+
+/* !important needed: these override inline `style` colors set on the same elements */
+.navLoginBtn:hover {
+  background: #ffd66b !important;
+  border-color: #ffd66b !important;
+}
+
+.ctaPrimary:hover {
+  background: #ffd66b !important;
+  transform: translateY(-2px) !important;
+}
+
+.ctaOutline:hover {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.footerLink:hover {
+  color: #ffc107 !important;
+}
+
+.pricingOutlineCta:hover {
+  border-color: #ffc107 !important;
+  color: #ffc107 !important;
+}
+
+.pricingFilledCta:hover {
+  background: #ffd66b !important;
+}
+
+.tgLoginBtn:hover:not(:disabled) {
+  background: #2baae5 !important;
+  transform: translateY(-2px) !important;
+}
