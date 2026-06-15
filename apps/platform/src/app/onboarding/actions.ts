@@ -15,7 +15,8 @@ export async function completeEmail(
   const session = await auth();
   if (!session?.user?.id) return { error: "Not authenticated" };
 
-  const email = ((formData.get("email") as string | null) ?? "").trim();
+  const raw = formData.get("email");
+  const email = (typeof raw === "string" ? raw : "").trim().toLowerCase();
   if (!email || !EMAIL_RE.test(email)) {
     return { error: "Please enter a valid email address" };
   }
@@ -27,7 +28,15 @@ export async function completeEmail(
     return { error: "That email is already in use" };
   }
 
-  await db.update(users).set({ email }).where(eq(users.id, session.user.id));
+  try {
+    await db.update(users).set({ email }).where(eq(users.id, session.user.id));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("23505") || msg.includes("users_email_idx")) {
+      return { error: "That email is already in use" };
+    }
+    throw err;
+  }
 
   // Refresh the JWT cookie so middleware sees email != null on the next request.
   await unstable_update({ user: { email } });
