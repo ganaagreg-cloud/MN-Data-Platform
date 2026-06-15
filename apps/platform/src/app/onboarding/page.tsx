@@ -15,7 +15,7 @@ export default async function OnboardingPage({
   }
 
   const params = await searchParams;
-  const requestedStep = Math.max(0, Number(params.step ?? 0) || 0);
+  const requestedStep = Math.min(4, Math.max(0, Math.floor(Number(params.step ?? 0) || 0)));
 
   // Auto-advance past email step if email is already set
   const effectiveStep = session.user.email ? Math.max(requestedStep, 1) : requestedStep;

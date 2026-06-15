@@ -8,5 +8,5 @@ export function parseChatId(
   if (!Number.isInteger(n) || Number.isNaN(n)) {
     return { ok: false, error: "Chat ID must be a whole number" };
   }
-  return { ok: true, value: trimmed };
+  return { ok: true, value: String(n) };
 }
