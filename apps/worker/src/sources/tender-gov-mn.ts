@@ -35,45 +35,58 @@ interface RawTender {
 // ── constants ────────────────────────────────────────────────────────────────
 
 const SOURCE_ID  = "tender.gov.mn";
-const LIST_URL   = "https://user.tender.gov.mn/mn/invitation";
+// "year=allYear&get=1" is required: the bare /mn/invitation page defaults to
+// the server's current year, which returns zero rows ("Тохирох үр дүн
+// олдсонгүй") on this site. Verified live 2026-06-14.
+const LIST_URL   = "https://user.tender.gov.mn/mn/invitation?year=allYear&get=1";
 const USER_AGENT = "TenderAlert/1.0 (+https://tenderalert.mn; info@tenderalert.mn)";
 
 // Rate limiter keyed on the subdomain being hit (not source_id).
 const limiter = getRateLimiter("user.tender.gov.mn");
 
-/**
- * CSS selectors — update this block after a single browser-devtools session on
- * https://user.tender.gov.mn/mn/invitation. All TODOs are co-located here so
- * one inspect pass wires the adapter completely.
- */
+// Verified against live rendered DOM 2026-06-14 for
+// https://user.tender.gov.mn/mn/invitation?year=allYear&get=1.
 const SEL = {
-  ROW:         "table tbody tr",                        // TODO: verify after live inspect
-  DETAIL_LINK: "a[href]",
-  NEXT_PAGE:   ".pagination .next:not(.disabled)",      // TODO: verify pagination pattern
+  ROW:              ".tender-result-table table tbody tr",
+  TITLE:            "a.tender-name",
+  PROCURING_ENTITY: ".client-name a",
+  STATUS:           ".view-status .days-left:not(.budget)",
+  BUDGET:           ".view-status .days-left.budget",
+  TENDER_NO:        ".invitation-number .number",
+  ANNOUNCE_DATE:    ".recieve-date .date",
+  DEADLINE_TIME:    "time[datetime]",
+  NEXT_PAGE:        ".pagination li:last-child a:not(.disabled)",
 } as const;
 
 // ── HTML extraction (cheerio) ─────────────────────────────────────────────────
-// Column indices below are 1-based td:nth-child positions; update both the
-// indices and the TODO comments together after inspect.
 
-function extractRows($: CheerioAPI): RawTender[] {
+export function extractRows($: CheerioAPI): RawTender[] {
   const rows: RawTender[] = [];
   $(SEL.ROW).each((_i, el) => {
-    const $el = $(el);
-    const cell = (n: number) => $el.find(`td:nth-child(${n})`).first().text().trim();
+    const $el    = $(el);
+    const $title = $el.find(SEL.TITLE).first();
+    // Skip the "Тохирох үр дүн олдсонгүй" (no results) placeholder row —
+    // it has no .tender-name and would otherwise fail externalId derivation.
+    if ($title.length === 0) return;
+
+    const $deadline    = $el.find(SEL.DEADLINE_TIME).first();
+    const deadlineDate = $deadline.attr("datetime") ?? "";
+    const deadlineTime = $deadline.find("em").first().text().trim();
 
     rows.push({
-      tenderNo:           cell(1),   // TODO: adjust after live inspect
-      title:              cell(2),
-      procuringEntity:    cell(3),
-      category:           cell(4),
-      estBudgetMnt:       cell(5),
-      submissionDeadline: cell(6),
-      announceDate:       cell(7),
-      bidSecurityMnt:     cell(8),
-      aimag:              cell(9),
-      status:             cell(10),
-      detailPath:         $el.find(SEL.DETAIL_LINK).first().attr("href") ?? "",
+      // .invitation-number/.recieve-date/.tender-name are each duplicated
+      // (mobile + desktop layout) — .first() picks either copy.
+      tenderNo:           $el.find(SEL.TENDER_NO).first().text().trim(),
+      title:              $title.text().trim(),
+      procuringEntity:    $el.find(SEL.PROCURING_ENTITY).first().text().trim(),
+      category:           "",
+      estBudgetMnt:       $el.find(SEL.BUDGET).first().text().trim(),
+      submissionDeadline: `${deadlineDate} ${deadlineTime}`.trim(),
+      announceDate:       $el.find(SEL.ANNOUNCE_DATE).first().text().trim(),
+      bidSecurityMnt:     "",
+      aimag:              "",
+      status:             $el.find(SEL.STATUS).first().text().trim(),
+      detailPath:         $title.attr("href") ?? "",
     });
   });
   return rows;
@@ -97,7 +110,11 @@ async function fetchTenderPage(cursor?: string): Promise<{ raw: RawTender[]; nex
   const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
   await limiter.acquire();
 
-  const pageUrl = `${LIST_URL}?page=${pageNum}`;
+  // Any "&page=" param (even "&page=1") makes the bootstrap search return
+  // zero rows — page 1 must be fetched via the bare LIST_URL. Later pages
+  // resolve to the empty-result placeholder (skipped in extractRows) with
+  // both pagination links disabled, so the pipeline terminates cleanly.
+  const pageUrl = pageNum === 1 ? LIST_URL : `${LIST_URL}&page=${pageNum}`;
   const html = await fetchRenderedHtml(pageUrl, { pageWaitMs: 3_000, userAgent: USER_AGENT });
   const $ = cheerio.load(html);
 
