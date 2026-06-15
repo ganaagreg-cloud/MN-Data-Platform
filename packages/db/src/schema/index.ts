@@ -1,4 +1,5 @@
 import {
+  bigint,
   index,
   integer,
   jsonb,
@@ -31,14 +32,18 @@ export const users = pgTable(
     orgId: uuid("org_id")
       .references(() => organizations.id)
       .notNull(),
-    email: text("email").notNull(),
+    email: text("email"),
     name: text("name"),
+    telegramId: bigint("telegram_id", { mode: "number" }),
     telegramChatId: text("telegram_chat_id"),
+    telegramUsername: text("telegram_username"),
     phone: text("phone"),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("users_email_idx").on(t.email),
+    uniqueIndex("users_telegram_id_idx").on(t.telegramId),
     index("users_org_id_idx").on(t.orgId),
   ],
 );
