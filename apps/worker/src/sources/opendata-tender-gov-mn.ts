@@ -1,8 +1,8 @@
 // apps/worker/src/sources/opendata-tender-gov-mn.ts
 //
 // Stub adapter for opendata.tender.gov.mn REST API (Bearer token, POST).
-// Same source_id as the Playwright adapter — they form a fallback chain;
-// only one runs at a time, selected by TENDER_ADAPTER env var.
+// Same source_id as the scrape adapter (tender-gov-mn.ts) — they form a
+// fallback chain; only one runs at a time, selected by TENDER_ADAPTER env var.
 //
 // Wire this in when:
 //   1. OPENDATA_BEARER_TOKEN is available

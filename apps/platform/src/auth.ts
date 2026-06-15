@@ -1,111 +1,56 @@
 import NextAuth, { type NextAuthResult } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { db, eq, organizations, subscriptions, users } from "@mn-platform/db";
-import { verifyTelegramPayload } from "@/lib/telegram-auth";
+import { env, isAdminTelegramId } from "@/env";
+import {
+  MAX_AUTH_AGE_SECONDS,
+  TelegramAuthPayloadSchema,
+  verifyTelegramAuth,
+} from "@/lib/telegram-auth-schema";
+import { upsertTelegramUser } from "@/lib/upsert-telegram-user";
 
-declare module "next-auth" {
-  interface User {
-    telegramId: number;
-    orgId: string;
-  }
-  interface Session {
-    user: {
-      id: string;
-      telegramId: number;
-      name: string | null;
-      email: string | null;
-      orgId: string;
-    };
-  }
-}
-
-const _auth: NextAuthResult = NextAuth({
+export const { handlers, signIn, signOut, auth, unstable_update }: NextAuthResult = NextAuth({
+  session: { strategy: "jwt" },
+  secret: env.AUTH_SECRET,
+  pages: { signIn: "/login" },
   providers: [
     Credentials({
+      name: "Telegram",
       credentials: {
-        id: { type: "text" },
-        first_name: { type: "text" },
-        last_name: { type: "text" },
-        username: { type: "text" },
-        photo_url: { type: "text" },
-        auth_date: { type: "text" },
-        hash: { type: "text" },
+        id: {},
+        first_name: {},
+        last_name: {},
+        username: {},
+        photo_url: {},
+        auth_date: {},
+        hash: {},
       },
-      async authorize(credentials) {
-        const botToken = process.env["TELEGRAM_BOT_TOKEN"];
-        if (!botToken) throw new Error("TELEGRAM_BOT_TOKEN not configured");
+      authorize: async (raw) => {
+        const credentials = raw as Record<string, string | undefined>;
+        if (!verifyTelegramAuth(credentials, env.TELEGRAM_BOT_TOKEN)) return null;
 
-        const tgUser = verifyTelegramPayload(credentials, botToken);
+        const payload = TelegramAuthPayloadSchema.parse(credentials);
+        if (Date.now() / 1000 - payload.auth_date > MAX_AUTH_AGE_SECONDS) return null;
 
-        const existing = await db.query.users.findFirst({
-          where: eq(users.telegramId, tgUser.id),
-        });
-
-        if (!existing) {
-          const [org] = await db
-            .insert(organizations)
-            .values({ name: `${tgUser.first_name}'s workspace` })
-            .returning();
-          if (!org) throw new Error("Failed to create organization");
-
-          const [user] = await db
-            .insert(users)
-            .values({
-              telegramId: tgUser.id,
-              orgId: org.id,
-              name: tgUser.first_name,
-              telegramUsername: tgUser.username ?? null,
-              lastLoginAt: new Date(),
-            })
-            .returning();
-          if (!user) throw new Error("Failed to create user");
-
-          await db.insert(subscriptions).values({
-            orgId: org.id,
-            modules: [],
-            categories: [],
-            alertChannels: [],
-            status: "trial",
-          });
-
-          return {
-            id: user.id,
-            telegramId: user.telegramId!,
-            name: user.name,
-            email: user.email,
-            orgId: user.orgId,
-          };
-        }
-
-        const [user] = await db
-          .update(users)
-          .set({
-            name: tgUser.first_name,
-            telegramUsername: tgUser.username ?? null,
-            lastLoginAt: new Date(),
-          })
-          .where(eq(users.id, existing.id))
-          .returning();
-        if (!user) throw new Error("Failed to update user");
-
+        const user = await upsertTelegramUser(payload);
         return {
           id: user.id,
-          telegramId: user.telegramId!,
-          name: user.name,
-          email: user.email,
-          orgId: user.orgId,
+          name: user.firstName ?? user.telegramUsername ?? null,
+          email: user.email ?? null,
+          telegramId: user.telegramId as number,
+          orgId: user.orgId as string,
         };
       },
     }),
   ],
   callbacks: {
     jwt({ token, user, trigger, session }) {
-      if (user) {
-        const u = user as { telegramId: number; orgId: string; email?: string | null };
-        token["telegramId"] = u.telegramId;
-        token["orgId"] = u.orgId;
-        token["email"] = u.email ?? null;
+      if (user?.id) {
+        token.userId = user.id;
+        token.telegramId = (user as { telegramId: number }).telegramId;
+        token.orgId = (user as { orgId: string }).orgId;
+        token["email"] = (user as { email?: string | null }).email ?? null;
       }
+      token.isAdmin = isAdminTelegramId(token.telegramId as number);
       const triggerSession = session as { user?: { email?: string } } | null;
       if (trigger === "update" && triggerSession?.user?.email) {
         token["email"] = triggerSession.user.email;
@@ -113,30 +58,13 @@ const _auth: NextAuthResult = NextAuth({
       return token;
     },
     session({ session, token }) {
-      // Cast session.user to our augmented shape to assign all custom fields.
-      const u = session.user as unknown as {
-        id: string;
-        telegramId: number;
-        name: string | null;
-        email: string | null;
-        orgId: string;
-      };
-      u.id = token.sub!;
-      u.telegramId = token["telegramId"] as number;
-      u.orgId = token["orgId"] as string;
-      u.email = (token["email"] as string | null | undefined) ?? null;
+      session.user.id = token.userId as string;
+      session.user.telegramId = token.telegramId as number;
+      session.user.orgId = token.orgId as string;
+      session.user.isAdmin = token.isAdmin as boolean;
+      const userWithEmail = session.user as { email?: string | null };
+      userWithEmail.email = (token["email"] as string | null | undefined) ?? null;
       return session;
     },
   },
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
-  session: { strategy: "jwt" },
 });
-
-export const handlers: NextAuthResult["handlers"] = _auth.handlers;
-export const auth: NextAuthResult["auth"] = _auth.auth;
-export const signIn: NextAuthResult["signIn"] = _auth.signIn;
-export const signOut: NextAuthResult["signOut"] = _auth.signOut;
-export const unstable_update: NextAuthResult["unstable_update"] = _auth.unstable_update;

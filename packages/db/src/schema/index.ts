@@ -25,18 +25,20 @@ export const organizations = pgTable("organizations", {
 });
 
 // ── users ─────────────────────────────────────────────────────────────────────
+// org_id is populated automatically: a personal organization is created on first
+// login (see upsertTelegramUser). email stays nullable/unused until the optional
+// B2B overlay. telegram_id is the identity for the Telegram Login Widget flow.
 export const users = pgTable(
   "users",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    orgId: uuid("org_id")
-      .references(() => organizations.id)
-      .notNull(),
+    orgId: uuid("org_id").references(() => organizations.id),
     email: text("email"),
     name: text("name"),
     telegramId: bigint("telegram_id", { mode: "number" }),
-    telegramChatId: text("telegram_chat_id"),
     telegramUsername: text("telegram_username"),
+    firstName: text("first_name"),
+    telegramChatId: text("telegram_chat_id"),
     phone: text("phone"),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     ...timestamps,
@@ -130,7 +132,7 @@ export const listings = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex("listings_source_external_idx").on(t.sourceId, t.externalId),
+    uniqueIndex("listings_source_external_type_idx").on(t.sourceId, t.externalId, t.listingType),
     index("listings_district_idx").on(t.district),
     index("listings_price_per_m2_idx").on(t.pricePerM2),
     index("listings_created_at_idx").on(t.createdAt),

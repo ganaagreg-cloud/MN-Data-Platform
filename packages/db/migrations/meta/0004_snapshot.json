@@ -1,5 +1,5 @@
 {
-  "id": "353fc4a3-cd4c-42e7-89b8-cf87d36c64f7",
+  "id": "4154bc7e-8a94-497c-ab21-14bf95f6dae9",
   "prevId": "922aca98-2d84-4d21-931f-7f6548563608",
   "version": "7",
   "dialect": "postgresql",
@@ -123,8 +123,8 @@
         }
       },
       "indexes": {
-        "listings_source_external_idx": {
-          "name": "listings_source_external_idx",
+        "listings_source_external_type_idx": {
+          "name": "listings_source_external_type_idx",
           "columns": [
             {
               "expression": "source_id",
@@ -134,6 +134,12 @@
             },
             {
               "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "listing_type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -720,17 +726,11 @@
           "name": "email",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "telegram_id": {
-          "name": "telegram_id",
-          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -740,21 +740,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "telegram_username": {
-          "name": "telegram_username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "phone": {
           "name": "phone",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_login_at": {
-          "name": "last_login_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -779,21 +767,6 @@
           "columns": [
             {
               "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "users_telegram_id_idx": {
-          "name": "users_telegram_id_idx",
-          "columns": [
-            {
-              "expression": "telegram_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

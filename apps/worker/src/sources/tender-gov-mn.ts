@@ -3,17 +3,19 @@
 // Source adapter — user.tender.gov.mn/mn/invitation (public listing page, no auth).
 //
 // robots.txt: MUST verify https://user.tender.gov.mn/robots.txt before first live run.
-// Rendering: JS — Playwright + Chromium.
+// Rendering: JS — Crawlbase Crawling API (rendered HTML) + cheerio.
 // Rate limit: getRateLimiter("user.tender.gov.mn") — 1 req / 2 s ± 500 ms (subdomain-scoped).
 // User-Agent: honest (TenderAlert/1.0). No spoofing, no rotation.
 
-import { chromium } from "playwright";
-import { getRateLimiter } from "@mn-platform/core";
+import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
+import { fetchRenderedHtml, getRateLimiter } from "@mn-platform/core";
 import { normalizeText, parseMnDate, parseMnt } from "@mn-platform/mn";
 import type { Source, TenderRecord } from "@mn-platform/core";
 import { TenderRecordSchema, tenderContentHash } from "./tender-schema.js";
+import { selectorPresent } from "./selector-guard.js";
 
-// ── raw shape scraped from the DOM ───────────────────────────────────────────
+// ── raw shape scraped from the page ──────────────────────────────────────────
 
 interface RawTender {
   tenderNo: string;
@@ -33,58 +35,97 @@ interface RawTender {
 // ── constants ────────────────────────────────────────────────────────────────
 
 const SOURCE_ID  = "tender.gov.mn";
-const LIST_URL   = "https://user.tender.gov.mn/mn/invitation";
+// "year=allYear&get=1" is required: the bare /mn/invitation page defaults to
+// the server's current year, which returns zero rows ("Тохирох үр дүн
+// олдсонгүй") on this site. Verified live 2026-06-14.
+const LIST_URL   = "https://user.tender.gov.mn/mn/invitation?year=allYear&get=1";
 const USER_AGENT = "TenderAlert/1.0 (+https://tenderalert.mn; info@tenderalert.mn)";
 
 // Rate limiter keyed on the subdomain being hit (not source_id).
 const limiter = getRateLimiter("user.tender.gov.mn");
 
-/**
- * DOM selectors — update this block after a single browser-devtools session on
- * https://user.tender.gov.mn/mn/invitation. All TODOs are co-located here so
- * one inspect pass wires the adapter completely.
- */
+// Verified against live rendered DOM 2026-06-14 for
+// https://user.tender.gov.mn/mn/invitation?year=allYear&get=1.
 const SEL = {
-  ROW:         "table tbody tr",                        // TODO: verify after live inspect
-  TENDER_NO:   "td:nth-child(1)",                       // TODO: adjust column indices
-  TITLE:       "td:nth-child(2)",
-  ENTITY:      "td:nth-child(3)",
-  CATEGORY:    "td:nth-child(4)",
-  BUDGET:      "td:nth-child(5)",
-  DEADLINE:    "td:nth-child(6)",
-  ANNOUNCE:    "td:nth-child(7)",
-  BID_SEC:     "td:nth-child(8)",
-  AIMAG:       "td:nth-child(9)",
-  STATUS:      "td:nth-child(10)",
-  DETAIL_LINK: "a[href]",
-  NEXT_PAGE:   ".pagination .next:not(.disabled)",      // TODO: verify pagination pattern
+  ROW:              ".tender-result-table table tbody tr",
+  TITLE:            "a.tender-name",
+  PROCURING_ENTITY: ".client-name a",
+  STATUS:           ".view-status .days-left:not(.budget)",
+  BUDGET:           ".view-status .days-left.budget",
+  TENDER_NO:        ".invitation-number .number",
+  ANNOUNCE_DATE:    ".recieve-date .date",
+  DEADLINE_TIME:    "time[datetime]",
+  NEXT_PAGE:        ".pagination li:last-child a:not(.disabled)",
 } as const;
 
-// ── DOM extraction (runs inside browser via $$eval) ──────────────────────────
-// Must be a self-contained function — no outer-scope references.
-// Playwright serialises this function body into the page context.
-// Column indices match SEL.TENDER_NO etc; update both together after inspect.
+// ── HTML extraction (cheerio) ─────────────────────────────────────────────────
 
-function extractRows(els: Element[]): RawTender[] {
-  return els.map((el) => {
-    const cell = (n: number) =>
-      el.querySelector(`td:nth-child(${n})`)?.textContent?.trim() ?? "";
-    const link = el.querySelector("a[href]");
+export function extractRows($: CheerioAPI): RawTender[] {
+  const rows: RawTender[] = [];
+  $(SEL.ROW).each((_i, el) => {
+    const $el    = $(el);
+    const $title = $el.find(SEL.TITLE).first();
+    // Skip the "Тохирох үр дүн олдсонгүй" (no results) placeholder row —
+    // it has no .tender-name and would otherwise fail externalId derivation.
+    if ($title.length === 0) return;
 
-    return {
-      tenderNo:           cell(1),   // TODO: adjust after live inspect
-      title:              cell(2),
-      procuringEntity:    cell(3),
-      category:           cell(4),
-      estBudgetMnt:       cell(5),
-      submissionDeadline: cell(6),
-      announceDate:       cell(7),
-      bidSecurityMnt:     cell(8),
-      aimag:              cell(9),
-      status:             cell(10),
-      detailPath:         link?.getAttribute("href") ?? "",
-    };
+    const $deadline    = $el.find(SEL.DEADLINE_TIME).first();
+    const deadlineDate = $deadline.attr("datetime") ?? "";
+    const deadlineTime = $deadline.find("em").first().text().trim();
+
+    rows.push({
+      // .invitation-number/.recieve-date/.tender-name are each duplicated
+      // (mobile + desktop layout) — .first() picks either copy.
+      tenderNo:           $el.find(SEL.TENDER_NO).first().text().trim(),
+      title:              $title.text().trim(),
+      procuringEntity:    $el.find(SEL.PROCURING_ENTITY).first().text().trim(),
+      category:           "",
+      estBudgetMnt:       $el.find(SEL.BUDGET).first().text().trim(),
+      submissionDeadline: `${deadlineDate} ${deadlineTime}`.trim(),
+      announceDate:       $el.find(SEL.ANNOUNCE_DATE).first().text().trim(),
+      bidSecurityMnt:     "",
+      aimag:              "",
+      status:             $el.find(SEL.STATUS).first().text().trim(),
+      detailPath:         $title.attr("href") ?? "",
+    });
   });
+  return rows;
+}
+
+// ── selector-drift guard ────────────────────────────────────────────────────
+// A missing row selector usually means the site's markup changed, not that
+// there are zero tenders — report it and degrade to "0 tenders this page" so
+// fetchPage() can continue rather than failing the whole job.
+
+export function checkRowContainer($: CheerioAPI, url: string): boolean {
+  return selectorPresent($, SEL.ROW, url, {
+    sourceLabel: "Tender",
+    message: "tender row container not found — selector may have changed",
+  });
+}
+
+// ── fetchPage ─────────────────────────────────────────────────────────────────
+
+async function fetchTenderPage(cursor?: string): Promise<{ raw: RawTender[]; nextCursor?: string }> {
+  const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
+  await limiter.acquire();
+
+  // Any "&page=" param (even "&page=1") makes the bootstrap search return
+  // zero rows — page 1 must be fetched via the bare LIST_URL. Later pages
+  // resolve to the empty-result placeholder (skipped in extractRows) with
+  // both pagination links disabled, so the pipeline terminates cleanly.
+  const pageUrl = pageNum === 1 ? LIST_URL : `${LIST_URL}&page=${pageNum}`;
+  const html = await fetchRenderedHtml(pageUrl, { pageWaitMs: 3_000, userAgent: USER_AGENT });
+  const $ = cheerio.load(html);
+
+  if (!checkRowContainer($, pageUrl)) {
+    return { raw: [] };
+  }
+
+  const raw     = extractRows($);
+  const hasNext = $(SEL.NEXT_PAGE).length > 0;
+
+  return { raw, ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}) };
 }
 
 // ── source implementation ────────────────────────────────────────────────────
@@ -92,48 +133,7 @@ function extractRows(els: Element[]): RawTender[] {
 export const tenderGovMnSource: Source<RawTender, TenderRecord> = {
   id: SOURCE_ID,
 
-  async fetchPage(cursor) {
-    const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
-
-    await limiter.acquire();
-
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const ctx = await browser.newContext({
-        userAgent:  USER_AGENT,
-        locale:     "mn-MN",
-        timezoneId: "Asia/Ulaanbaatar",
-        viewport:   { width: 1280, height: 800 },
-        extraHTTPHeaders: {
-          "Accept-Language": "mn-MN,mn;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-      });
-      const page = await ctx.newPage();
-
-      await page.goto(`${LIST_URL}?page=${pageNum}`, {
-        waitUntil: "networkidle",
-        timeout:   30_000,
-      });
-
-      await page.waitForSelector(SEL.ROW, { timeout: 15_000 });
-
-      // Randomised post-load delay — reduces burst pressure; allows lazy content to settle.
-      await page.waitForTimeout(1_000 + Math.random() * 2_000);
-
-      // extractRows is passed directly — it is serialised into the page context by
-      // Playwright. It must remain self-contained (no outer-scope references).
-      const raw = await page.$$eval(SEL.ROW, extractRows);
-
-      const hasNext = (await page.$(SEL.NEXT_PAGE)) !== null;
-
-      return {
-        raw,
-        ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}),
-      };
-    } finally {
-      await browser.close();
-    }
-  },
+  fetchPage: fetchTenderPage,
 
   parse(raw) {
     const tenderNo = raw.tenderNo ? normalizeText(raw.tenderNo) : null;
@@ -158,7 +158,7 @@ export const tenderGovMnSource: Source<RawTender, TenderRecord> = {
       bidSecurityMnt:     raw.bidSecurityMnt ? parseMnt(raw.bidSecurityMnt) : null,
       aimag:              raw.aimag ? normalizeText(raw.aimag) : null,
       status:             raw.status ? normalizeText(raw.status) : "announced",
-      fetchedVia:         "playwright",
+      fetchedVia:         "crawlbase",
       raw:                raw as unknown as Record<string, unknown>,
     };
   },

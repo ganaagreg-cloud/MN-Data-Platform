@@ -18,10 +18,19 @@ export async function dispatchAlert(
     return;
   }
 
+  // Extract to a local const so the non-null narrowing persists across the
+  // `await` below (narrowing a nested property like `user.orgId` directly
+  // does not reliably survive an await).
+  const orgId = user.orgId;
+  if (!orgId) {
+    logger.warn({ userId: payload.userId }, "dispatchAlert: user has no org — skipping");
+    return;
+  }
+
   // Step 1b: load subscription for user's org
   const subscription = await db.query.subscriptions.findFirst({
     where: and(
-      eq(subscriptions.orgId, user.orgId),
+      eq(subscriptions.orgId, orgId),
     ),
   });
   if (!subscription) {

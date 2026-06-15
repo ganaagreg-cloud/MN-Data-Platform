@@ -4,22 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-interface TelegramWidgetUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
-}
-
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: TelegramWidgetUser) => void;
-  }
-}
-
 export default function LoginPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -33,7 +17,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.onTelegramAuth = async (user: TelegramWidgetUser) => {
+    window.onTelegramAuth = async (user: Record<string, string | number>) => {
       setLoading(true);
       setError(null);
 

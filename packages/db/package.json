@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file=../../.env ./node_modules/.bin/drizzle-kit migrate"
+    "db:migrate": "dotenv -e ../../.env -- drizzle-kit migrate"
   },
   "dependencies": {
     "drizzle-orm": "^0.41.0",
@@ -20,6 +20,7 @@
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.30.0",
     "eslint": "^8.56.0",
     "typescript": "^5.5.0"

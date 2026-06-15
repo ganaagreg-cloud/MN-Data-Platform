@@ -1,7 +1,6 @@
 // apps/worker/src/listing-pipeline.test.ts
 import { describe, it, expect, vi } from "vitest";
-import { runListingPipeline } from "@mn-platform/core";
-import type { ListingPipelineDb } from "@mn-platform/core";
+import { runPipeline } from "@mn-platform/core";
 import type { Source, ListingRecord, UpsertOutcome } from "@mn-platform/core";
 import { ListingRecordSchema, listingContentHash } from "./sources/listing-schema.js";
 
@@ -19,10 +18,9 @@ const outOfUbRecord: ListingRecord = {
   raw:         {},
 };
 
-describe("runListingPipeline — filter integration", () => {
-  it("skips records where source.filter returns false — upsertListing never called", async () => {
-    const upsertListing = vi.fn<() => Promise<UpsertOutcome>>().mockResolvedValue("created");
-    const db: ListingPipelineDb = { upsertListing };
+describe("runPipeline — listing filter integration", () => {
+  it("skips records where source.filter returns false — upsert never called", async () => {
+    const upsert = vi.fn<() => Promise<UpsertOutcome>>().mockResolvedValue("created");
 
     const source: Source<ListingRecord, ListingRecord> = {
       id:          "test.source",
@@ -33,9 +31,9 @@ describe("runListingPipeline — filter integration", () => {
       filter:      (r) => r.district !== null,
     };
 
-    const result = await runListingPipeline(source, db);
+    const result = await runPipeline({ source, upsert });
 
-    expect(upsertListing).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
     expect(result.new).toBe(0);
     expect(result.updated).toBe(0);
     expect(result.skipped).toBe(1);

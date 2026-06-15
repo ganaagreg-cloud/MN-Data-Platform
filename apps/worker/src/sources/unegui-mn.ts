@@ -3,88 +3,89 @@
 // Source adapter — unegui.mn apartment listings (sale + rent), UB only.
 //
 // robots.txt: MUST verify https://www.unegui.mn/robots.txt before first live run.
-// Rendering: JS — Playwright + Chromium.
+// Rendering: JS — Crawlbase Crawling API (rendered HTML) + cheerio.
 // Rate limit: getRateLimiter("unegui.mn") — shared for both sale and rent (same domain).
 // User-Agent: honest (GazarPrice/1.0). No spoofing, no rotation.
 // Compliance: store structured fields only — no description text, photos, or copyrighted content.
 
-import { chromium } from "playwright";
-import { getRateLimiter } from "@mn-platform/core";
+import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
+import { fetchRenderedHtml, getRateLimiter } from "@mn-platform/core";
 import { normalizeDistrict, normalizeText, parseMnt } from "@mn-platform/mn";
 import type { Source, ListingRecord } from "@mn-platform/core";
 import { ListingRecordSchema, listingContentHash } from "./listing-schema.js";
+import { selectorPresent } from "./selector-guard.js";
 
-// ── raw shape scraped from the DOM ────────────────────────────────────────────
+// ── raw shape scraped from the page ───────────────────────────────────────────
 
 interface RawListing {
+  externalId: string;
   price:      string;
-  rooms:      string;
-  area:       string;
-  floor:      string;
-  district:   string;
-  khoroo:     string;
-  building:   string;
+  title:      string;
+  place:      string;
   detailPath: string;
 }
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const SOURCE_ID  = "unegui.mn";
-const SALE_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-zarna/ulaanbaatar/";
-const RENT_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-treej/ulaanbaatar/";
+const SALE_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-zarna/oron-suuts-zarna/ulan-bator/";
+const RENT_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-treesllne/oron-suuts/ulan-bator/";
 const USER_AGENT = "GazarPrice/1.0 (+https://gazarprice.mn; info@gazarprice.mn)";
 
 // One token bucket for the entire unegui.mn domain — shared across sale and rent.
 const limiter = getRateLimiter("unegui.mn");
 
-/**
- * DOM selectors — update after a single browser-devtools session on
- * https://www.unegui.mn/l-hdlh/l-hdlh-zarna/ulaanbaatar/
- * All TODOs co-located so one inspect pass wires both adapters completely.
- */
+// Verified against live rendered DOM 2026-06-14 for both the sale and rent
+// listing pages (oron-suuts-zarna / oron-suuts, ulan-bator).
 const SEL = {
-  CARD:      ".list-announcement-block",               // TODO: verify after live inspect
-  NEXT_PAGE: ".pager__item--next:not(.disabled)",      // TODO: verify pagination pattern
+  CARD:      ".advert.js-item-listing",
+  PRICE:     ".advert__content-price",
+  TITLE:     ".advert__content-title",
+  PLACE:     ".advert__content-place",
+  NEXT_PAGE: ".number-list-next.js-page-filter",
 } as const;
 
-// ── DOM extraction (runs inside browser via $$eval) ───────────────────────────
-// Must be a self-contained function — no outer-scope references.
-// Playwright serialises this function body into the page context.
-// Store only structured fields — never description text or image URLs.
-// Return type is inlined (cannot reference outer-scope RawListing in serialised fn body).
+// Area and room count are only available embedded in the listing title, e.g.
+// "Сбд драмын театрын урд элит хотхонд 184,7мкв 5өрөө" (note comma decimal).
+const AREA_RE  = /(\d+(?:[.,]\d+)?)\s*(?:мкв|м2|м²)/i;
+const ROOMS_RE = /(\d+)\s*[-\s]?өрөө/i;
 
-function extractRows(els: Element[]): Array<{
-  price: string; rooms: string; area: string; floor: string;
-  district: string; khoroo: string; building: string; detailPath: string;
-}> {
-  return els.map((el) => {
-    const text = (sel: string) => el.querySelector(sel)?.textContent?.trim() ?? "";
-    const link  = el.querySelector("a[href]");
-    return {
-      price:      text(".price-title"),          // TODO: adjust after live inspect
-      rooms:      text(".rooms-char"),            // TODO: adjust
-      area:       text(".area-char"),             // TODO: adjust
-      floor:      text(".floor-char"),            // TODO: adjust
-      district:   text(".district-char"),         // TODO: adjust
-      khoroo:     text(".khoroo-char"),           // TODO: adjust
-      building:   text(".building-char"),         // TODO: adjust
-      detailPath: link?.getAttribute("href") ?? "",
-    };
+// ── HTML extraction (cheerio) ──────────────────────────────────────────────────
+// Store only structured fields — never description text or image URLs.
+
+function extractRows($: CheerioAPI): RawListing[] {
+  const rows: RawListing[] = [];
+  $(SEL.CARD).each((_i, el) => {
+    const $el = $(el);
+    const $title = $el.find(SEL.TITLE).first();
+    rows.push({
+      externalId: $el.attr("data-id") ?? "",
+      price:      $el.find(SEL.PRICE).first().text().trim(),
+      title:      $title.text().trim(),
+      place:      $el.find(SEL.PLACE).first().text().trim(),
+      detailPath: $title.attr("href") ?? "",
+    });
   });
+  return rows;
 }
 
 // ── shared parse logic ────────────────────────────────────────────────────────
 
 function parseListing(raw: RawListing, listingType: "sale" | "rent"): ListingRecord {
-  const externalId = raw.detailPath.split("/").filter(Boolean).pop() ?? "";
-  if (!externalId) {
+  if (!raw.externalId) {
     throw new Error(
-      `unegui.mn: no externalId from detailPath. Row: ${JSON.stringify(raw)}`,
+      `unegui.mn: missing data-id on listing card. Row: ${JSON.stringify(raw)}`,
     );
   }
 
-  const areaRaw = raw.area ? parseFloat(raw.area.replace(/[^\d.]/g, "")) : null;
-  const areaM2  = areaRaw !== null && !isNaN(areaRaw) ? areaRaw : null;
+  const areaMatch = raw.title.match(AREA_RE);
+  const areaM2 = areaMatch?.[1]
+    ? parseFloat(areaMatch[1].replace(",", "."))
+    : null;
+
+  const roomsMatch = raw.title.match(ROOMS_RE);
+  const rooms = roomsMatch?.[1] ? parseInt(roomsMatch[1], 10) : null;
 
   const parsedPrice = raw.price ? parseMnt(raw.price) : null;
   const priceMnt    = parsedPrice != null ? Number(parsedPrice) : null;
@@ -93,22 +94,45 @@ function parseListing(raw: RawListing, listingType: "sale" | "rent"): ListingRec
     ? priceMnt / areaM2
     : null;
 
-  const roomsRaw = raw.rooms ? parseInt(raw.rooms, 10) : NaN;
-  const floorRaw = raw.floor ? parseInt(raw.floor, 10) : NaN;
+  // "Сүхбаатар, 5-р хороолол" / "Сүхбаатар, Сүхбаатар, Хороо 2" — district is
+  // whichever comma-separated part normalizes to a known district; khoroo
+  // (when present) is the last part, stored verbatim.
+  const placeParts = raw.place.split(",").map((p) => normalizeText(p)).filter(Boolean);
+  let district: string | null = null;
+  for (const part of placeParts) {
+    const normalized = normalizeDistrict(part);
+    if (normalized) {
+      district = normalized;
+      break;
+    }
+  }
+  const khoroo = placeParts.length > 1 ? placeParts[placeParts.length - 1]! : null;
 
   return {
-    externalId,
+    externalId: raw.externalId,
     listingType,
-    district:  raw.district ? normalizeDistrict(raw.district) : null,
-    khoroo:    raw.khoroo   ? normalizeText(raw.khoroo)       : null,
-    rooms:     !isNaN(roomsRaw) ? roomsRaw : null,
+    district,
+    khoroo,
+    rooms,
     areaM2,
-    floor:     !isNaN(floorRaw) ? floorRaw : null,
-    building:  raw.building ? normalizeText(raw.building)     : null,
+    floor:    null, // not present on listing cards — would require a detail-page fetch
+    building: null, // not present on listing cards — would require a detail-page fetch
     priceMnt,
     pricePerM2,
     raw: raw as unknown as Record<string, unknown>,
   };
+}
+
+// ── selector-drift guard ────────────────────────────────────────────────────
+// A missing container selector usually means the site's markup changed, not
+// that there are zero results — report it and degrade to "0 listings this
+// page" so fetchPage() can continue rather than failing the whole job.
+
+export function checkListingContainer($: CheerioAPI, url: string): boolean {
+  return selectorPresent($, SEL.CARD, url, {
+    sourceLabel: "Unegui",
+    message: "listing container not found — selector may have changed",
+  });
 }
 
 // ── fetchPage (shared, parameterised by URL) ──────────────────────────────────
@@ -120,34 +144,18 @@ async function fetchListingPage(
   const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
   await limiter.acquire();
 
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const ctx = await browser.newContext({
-      userAgent:  USER_AGENT,
-      locale:     "mn-MN",
-      timezoneId: "Asia/Ulaanbaatar",
-      viewport:   { width: 1280, height: 800 },
-      extraHTTPHeaders: {
-        "Accept-Language": "mn-MN,mn;q=0.9,en-US;q=0.8,en;q=0.7",
-      },
-    });
-    const page = await ctx.newPage();
+  const pageUrl = `${url}?cities=1&page=${pageNum}`;
+  const html = await fetchRenderedHtml(pageUrl, { pageWaitMs: 3_000, userAgent: USER_AGENT });
+  const $ = cheerio.load(html);
 
-    await page.goto(`${url}?page=${pageNum}`, {
-      waitUntil: "networkidle",
-      timeout:   30_000,
-    });
-    await page.waitForSelector(SEL.CARD, { timeout: 15_000 });
-    // Randomised post-load delay — reduces burst pressure; allows lazy content to settle.
-    await page.waitForTimeout(1_000 + Math.random() * 2_000);
-
-    const raw     = (await page.$$eval(SEL.CARD, extractRows)) as RawListing[];
-    const hasNext = (await page.$(SEL.NEXT_PAGE)) !== null;
-
-    return { raw, ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}) };
-  } finally {
-    await browser.close();
+  if (!checkListingContainer($, pageUrl)) {
+    return { raw: [] };
   }
+
+  const raw     = extractRows($);
+  const hasNext = $(SEL.NEXT_PAGE).length > 0;
+
+  return { raw, ...(hasNext ? { nextCursor: String(pageNum + 1) } : {}) };
 }
 
 // ── exported sources ──────────────────────────────────────────────────────────

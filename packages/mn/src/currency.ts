@@ -13,13 +13,13 @@
 export function parseMnt(input: string): string | null {
   const s = input.trim();
 
-  const sayaMatch = s.match(/^([\d,]+(?:\.\d+)?)\s*сая/);
+  const sayaMatch = s.match(/^([\d,]+(?:\.\d+)?)\s*сая/i);
   if (sayaMatch?.[1]) {
     const n = parseFloat(sayaMatch[1].replace(/,/g, "")) * 1_000_000;
     return n.toFixed(2);
   }
 
-  const terbumMatch = s.match(/^([\d,]+(?:\.\d+)?)\s*тэрбум/);
+  const terbumMatch = s.match(/^([\d,]+(?:\.\d+)?)\s*тэрбум/i);
   if (terbumMatch?.[1]) {
     const n = parseFloat(terbumMatch[1].replace(/,/g, "")) * 1_000_000_000;
     return n.toFixed(2);

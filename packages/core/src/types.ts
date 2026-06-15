@@ -27,7 +27,7 @@ export interface TenderRecord {
   aimag: string | null;
   status: string;
   /**
-   * Which adapter wrote this record ("playwright" | "api" | future).
+   * Which adapter wrote this record ("crawlbase" | "api" | future).
    * Excluded from contentHash — switching adapters must not trigger re-alerts.
    */
   fetchedVia: string;
@@ -48,7 +48,7 @@ export interface ListingRecord {
   raw: Record<string, unknown>;
 }
 
-/** Returned by both runPipeline and runListingPipeline. */
+/** Returned by runPipeline. */
 export interface PipelineResult {
   source: string;
   fetched: number;
@@ -57,4 +57,8 @@ export interface PipelineResult {
   skipped: number;
   errors: number;
   durationMs: number;
+  /** Total fetchPage() calls made (one per page/cursor). */
+  pagesFetched: number;
+  /** Of pagesFetched, how many returned zero rows. */
+  emptyPages: number;
 }

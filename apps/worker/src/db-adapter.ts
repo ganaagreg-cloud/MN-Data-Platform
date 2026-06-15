@@ -2,14 +2,27 @@
 import { and, eq } from "drizzle-orm";
 import { db, tenders, listings } from "@mn-platform/db";
 import type {
-  PipelineDb,
-  ListingPipelineDb,
+  UpsertFn,
   UpsertOutcome,
   TenderRecord,
   ListingRecord,
 } from "@mn-platform/core";
 
-export function createDbAdapter(): PipelineDb & ListingPipelineDb {
+export interface DbAdapter {
+  upsertTender: UpsertFn<TenderRecord>;
+  upsertListing: UpsertFn<ListingRecord>;
+  /**
+   * Looks up the current priceMnt for (sourceId, externalId, listingType)
+   * before upsertListing overwrites it. Returns undefined if no row exists
+   * yet (i.e. this will be a "created" outcome).
+   */
+  getPreviousListingPrice: (
+    sourceId: string,
+    record: ListingRecord,
+  ) => Promise<Partial<ListingRecord> | undefined>;
+}
+
+export function createDbAdapter(): DbAdapter {
   return {
     async upsertTender(
       sourceId: string,
@@ -96,6 +109,7 @@ export function createDbAdapter(): PipelineDb & ListingPipelineDb {
           and(
             eq(listings.sourceId, sourceId),
             eq(listings.externalId, record.externalId),
+            eq(listings.listingType, record.listingType),
           ),
         )
         .limit(1);
@@ -149,6 +163,28 @@ export function createDbAdapter(): PipelineDb & ListingPipelineDb {
         })
         .where(eq(listings.id, row.id));
       return "updated";
+    },
+
+    async getPreviousListingPrice(
+      sourceId: string,
+      record: ListingRecord,
+    ): Promise<Partial<ListingRecord> | undefined> {
+      const existing = await db
+        .select({ priceMnt: listings.priceMnt })
+        .from(listings)
+        .where(
+          and(
+            eq(listings.sourceId, sourceId),
+            eq(listings.externalId, record.externalId),
+            eq(listings.listingType, record.listingType),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length === 0) return undefined;
+
+      const priceMnt = existing[0]!.priceMnt;
+      return { priceMnt: priceMnt != null ? Number(priceMnt) : null };
     },
   };
 }
