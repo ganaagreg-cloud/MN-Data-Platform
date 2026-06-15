@@ -10,7 +10,7 @@ export interface Notification {
 
 export interface Recipient {
   userId: string;
-  email: string;
+  email?: string;
   telegramChatId?: string;
   phone?: string;
 }

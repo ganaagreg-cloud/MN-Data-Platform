@@ -53,7 +53,7 @@ export async function dispatchAlert(
   // Step 5: build recipient (exactOptionalPropertyTypes — omit absent fields)
   const recipient: import("./types.js").Recipient = {
     userId: user.id,
-    email:  user.email,
+    ...(user.email          != null && { email:          user.email }),
     ...(user.telegramChatId != null && { telegramChatId: user.telegramChatId }),
     ...(user.phone          != null && { phone:          user.phone }),
   };
@@ -69,6 +69,10 @@ export async function dispatchAlert(
     }
 
     // Channel gates
+    if (channel === "email" && !recipient.email) {
+      logger.info({ userId: user.id }, "dispatchAlert: email not set — skipping email");
+      continue;
+    }
     if (channel === "telegram" && !recipient.telegramChatId) {
       logger.info({ userId: user.id }, "dispatchAlert: telegram_chat_id not set — skipping telegram");
       continue;

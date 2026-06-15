@@ -12,6 +12,7 @@ export class ResendEmailProvider implements ChannelProvider {
   }
 
   async send(notification: Notification, recipient: Recipient): Promise<void> {
+    if (!recipient.email) throw new Error("Email recipient has no email address");
     const html = `
       <table style="font-family:sans-serif;max-width:600px;margin:0 auto">
         <tr><td><h2 style="color:#1a1a1a">${escapeHtml(notification.subject)}</h2></td></tr>
