@@ -32,7 +32,6 @@ export function OnboardingWizard(props: WizardProps) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        paddingTop: "4rem",
         padding: "4rem 1rem 0",
       }}
     >
@@ -159,7 +158,6 @@ function ModuleStep({
         <button
           type="button"
           onClick={() => advance(2)}
-          disabled={isPending}
           style={{ background: "none", border: "none", cursor: "pointer", color: "#888" }}
         >
           Skip
@@ -234,7 +232,6 @@ function CategoryStep({
         <button
           type="button"
           onClick={() => advance(3)}
-          disabled={isPending}
           style={{ background: "none", border: "none", cursor: "pointer", color: "#888" }}
         >
           Skip
@@ -315,7 +312,6 @@ function TelegramStep({
           <button
             type="button"
             onClick={() => advance(4)}
-            disabled={isPending}
             style={{ background: "none", border: "none", cursor: "pointer", color: "#888" }}
           >
             Skip
