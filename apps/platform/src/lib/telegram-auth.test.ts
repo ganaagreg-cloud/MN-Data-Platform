@@ -1,18 +1,9 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { verifyTelegramPayload } from "./telegram-auth";
+import { verifyTelegramPayload, TELEGRAM_FIELDS } from "./telegram-auth";
 import type { TelegramUser } from "./telegram-auth";
 
 const testHmacKey = "hmac-test-key-not-a-real-secret";
-
-const TELEGRAM_FIELDS = new Set([
-  "auth_date",
-  "first_name",
-  "id",
-  "last_name",
-  "photo_url",
-  "username",
-]);
 
 function buildPayload(
   overrides: Partial<Record<keyof TelegramUser, string | number>> = {},
@@ -87,5 +78,17 @@ describe("verifyTelegramPayload", () => {
     payload["redirect"] = "false";
     payload["csrfToken"] = "abc";
     expect(() => verifyTelegramPayload(payload, testHmacKey)).not.toThrow();
+  });
+
+  it("throws on non-hex hash string", () => {
+    const payload = buildPayload();
+    payload["hash"] = "not-valid-hex!!".padEnd(64, "!");
+    expect(() => verifyTelegramPayload(payload, testHmacKey)).toThrow("Hash mismatch");
+  });
+
+  it("throws when auth_date is in the future", () => {
+    const futureDate = Math.floor(Date.now() / 1000) + 3600;
+    const payload = buildPayload({ auth_date: futureDate });
+    expect(() => verifyTelegramPayload(payload, testHmacKey)).toThrow("Auth data expired");
   });
 });

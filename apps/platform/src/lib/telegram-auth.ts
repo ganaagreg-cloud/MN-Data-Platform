@@ -12,7 +12,7 @@ export interface TelegramUser {
 
 const MAX_AGE_SECONDS = 86400;
 
-const TELEGRAM_FIELDS = new Set([
+export const TELEGRAM_FIELDS = new Set([
   "auth_date",
   "first_name",
   "id",
@@ -31,6 +31,10 @@ export function verifyTelegramPayload(payload: unknown, botToken: string): Teleg
   const hash = data["hash"];
   if (typeof hash !== "string" || hash === "") {
     throw new Error("Missing hash");
+  }
+
+  if (!/^[0-9a-f]{64}$/i.test(hash)) {
+    throw new Error("Hash mismatch");
   }
 
   // Only include Telegram's known signed fields — guards against Auth.js injecting
@@ -63,7 +67,7 @@ export function verifyTelegramPayload(payload: unknown, botToken: string): Teleg
   if (!Number.isFinite(authDate)) throw new Error("Invalid auth_date");
 
   const ageSeconds = Math.floor(Date.now() / 1000) - authDate;
-  if (ageSeconds > MAX_AGE_SECONDS) throw new Error("Auth data expired");
+  if (ageSeconds < 0 || ageSeconds > MAX_AGE_SECONDS) throw new Error("Auth data expired");
 
   const id = Number(data["id"]);
   if (!Number.isInteger(id) || id <= 0) throw new Error("Invalid id");
