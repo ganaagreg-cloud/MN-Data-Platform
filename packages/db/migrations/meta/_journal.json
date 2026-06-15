@@ -36,6 +36,13 @@
       "when": 1781503863226,
       "tag": "0004_burly_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781515633727,
+      "tag": "0005_rich_triathlon",
+      "breakpoints": true
     }
   ]
 }

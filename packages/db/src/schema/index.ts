@@ -60,13 +60,14 @@ export const subscriptions = pgTable(
       .references(() => organizations.id)
       .notNull(),
     modules: text("modules").array().notNull().default([]),
+    categories: text("categories").array().notNull().default([]),
     alertChannels: text("alert_channels").array().notNull().default([]),
     status: text("status").notNull().default("trial"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
-    index("subscriptions_org_id_idx").on(t.orgId),
+    uniqueIndex("subscriptions_org_id_idx").on(t.orgId),
     index("subscriptions_status_idx").on(t.status),
   ],
 );
