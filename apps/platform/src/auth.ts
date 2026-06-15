@@ -1,6 +1,6 @@
 import NextAuth, { type NextAuthResult } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { db, eq, organizations, users } from "@mn-platform/db";
+import { db, eq, organizations, subscriptions, users } from "@mn-platform/db";
 import { verifyTelegramPayload } from "@/lib/telegram-auth";
 
 declare module "next-auth" {
@@ -59,6 +59,14 @@ const _auth: NextAuthResult = NextAuth({
             })
             .returning();
           if (!user) throw new Error("Failed to create user");
+
+          await db.insert(subscriptions).values({
+            orgId: org.id,
+            modules: [],
+            categories: [],
+            alertChannels: [],
+            status: "trial",
+          });
 
           return {
             id: user.id,
