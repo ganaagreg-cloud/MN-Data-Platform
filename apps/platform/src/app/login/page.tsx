@@ -59,6 +59,7 @@ export default function LoginPage() {
 
     return () => {
       delete window.onTelegramAuth;
+      script.remove();
     };
   }, [router]);
 
