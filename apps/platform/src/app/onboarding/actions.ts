@@ -53,6 +53,7 @@ export async function saveModules(
   const raw = formData.getAll("modules").filter((m): m is string => typeof m === "string");
   const valid = raw.every((m) => m === "tender" || m === "gazar");
   if (!valid) return { error: "Invalid module selection" };
+  if (raw.length === 0) return null;
 
   await db
     .insert(subscriptions)
