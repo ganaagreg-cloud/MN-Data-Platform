@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { completeEmail } from "./actions";
+import { saveEmail } from "./actions";
 
 export default function OnboardingPage() {
-  const [state, action, pending] = useActionState(completeEmail, null);
+  const [state, action, pending] = useActionState(saveEmail, null);
 
   return (
     <main

@@ -2,13 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { auth, unstable_update } from "@/auth";
-import { db, users, eq } from "@mn-platform/db";
+import { db, users, subscriptions, eq } from "@mn-platform/db";
+import { parseChatId } from "@/lib/parse-chat-id";
 
 type ActionState = { error: string } | null;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function completeEmail(
+export async function saveEmail(
   _prevState: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
@@ -38,8 +39,81 @@ export async function completeEmail(
     throw err;
   }
 
-  // Refresh the JWT cookie so middleware sees email != null on the next request.
   await unstable_update({ user: { email } });
+  redirect("/onboarding?step=1");
+}
 
-  redirect("/dashboard");
+export async function saveModules(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Not authenticated" };
+
+  const raw = formData.getAll("modules").filter((m): m is string => typeof m === "string");
+  const valid = raw.every((m) => m === "tender" || m === "gazar");
+  if (!valid) return { error: "Invalid module selection" };
+
+  await db
+    .insert(subscriptions)
+    .values({
+      orgId: session.user.orgId,
+      modules: raw,
+      categories: [],
+      alertChannels: [],
+      status: "trial",
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.orgId,
+      set: { modules: raw, updatedAt: new Date() },
+    });
+
+  return null;
+}
+
+export async function saveCategories(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Not authenticated" };
+
+  const categories = formData
+    .getAll("categories")
+    .filter((c): c is string => typeof c === "string");
+
+  await db
+    .insert(subscriptions)
+    .values({
+      orgId: session.user.orgId,
+      modules: [],
+      categories,
+      alertChannels: [],
+      status: "trial",
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.orgId,
+      set: { categories, updatedAt: new Date() },
+    });
+
+  return null;
+}
+
+export async function saveTelegramChatId(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Not authenticated" };
+
+  const raw = formData.get("chatId");
+  const result = parseChatId(typeof raw === "string" ? raw : "");
+  if (!result.ok) return { error: result.error };
+
+  await db
+    .update(users)
+    .set({ telegramChatId: result.value })
+    .where(eq(users.id, session.user.id));
+
+  return null;
 }
