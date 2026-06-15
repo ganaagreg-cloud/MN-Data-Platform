@@ -8,7 +8,7 @@
 
 ## Overview
 
-When a user logs in via Telegram for the first time, they have `email = null` and no subscription row. The middleware gates all authenticated routes: `!email → redirect /onboarding`. The current `/onboarding` is a single email-collection page. This spec extends it into a 5-step wizard (Step 0–4) that also captures module selection, tender alert categories, and Telegram alert chat ID.
+When a user logs in via Telegram for the first time, they have `email = null` and (currently) no subscription row. The middleware gates all authenticated routes: `!email → redirect /onboarding`. The current `/onboarding` is a single email-collection page. This spec extends it into a 5-step wizard (Step 0–4) that also captures module selection, tender alert categories, and Telegram alert chat ID. As part of this change, a subscription row is also created in `auth.ts` on first user creation so one always exists.
 
 Re-entry is intentionally allowed — authenticated users with email set can revisit `/onboarding` to update their module/category/telegram preferences before `/settings` is built.
 
@@ -52,9 +52,9 @@ All steps live at `/onboarding?step=N`.
 
 ### Step 0 — Email
 - **Shown when:** `session.user.email` is null
-- **Auto-skipped:** if email already set, `effectiveStep = Math.max(requestedStep, 1)`
+- **Auto-skipped:** `page.tsx` (server component) checks `session.user.email`; if set, calls `redirect("/onboarding?step=" + Math.max(requestedStep, 1))` before rendering
 - **UI:** Email input + "Continue" button
-- **Action:** `saveEmail` — validates, upserts `users.email`, calls `unstable_update` to refresh JWT, redirects to `?step=1`
+- **Action:** `saveEmail` — validates, upserts `users.email`, calls `unstable_update` to refresh JWT, then `redirect("/onboarding?step=1")`
 - **Skip:** None — email is required by middleware. Skipping would loop the user back.
 
 ### Step 1 — Module
@@ -64,7 +64,7 @@ All steps live at `/onboarding?step=N`.
 - **Skip:** Advances to `?step=2` without saving.
 
 ### Step 2 — Categories
-- **Shown at:** `?step=2`, **only if** modules includes `"tender"`. Otherwise auto-advances to `?step=3`.
+- **Shown at:** `?step=2`, **only if** modules includes `"tender"`. Otherwise `page.tsx` calls `redirect("/onboarding?step=3")` server-side before rendering.
 - **UI:** Checkbox list from `TENDER_CATEGORIES`. Pre-checked from `subscription.categories`.
 - **Action:** `saveCategories` — updates `subscriptions.categories`. Empty `[]` = alert on all categories.
 - **Skip:** Advances to `?step=3` without saving.
