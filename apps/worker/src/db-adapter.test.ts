@@ -46,18 +46,21 @@ describe("createDbAdapter().upsertListing", () => {
     vi.clearAllMocks();
   });
 
-  it("looks up the existing row by sourceId + externalId + listingType", async () => {
+  it("returns outcome=created and the new id on insert", async () => {
     const whereSpy = vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) });
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({ where: whereSpy }),
     } as never);
     vi.mocked(db.insert).mockReturnValue({
-      values: vi.fn().mockResolvedValue(undefined),
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: "listing-uuid-1" }]),
+      }),
     } as never);
 
-    await createDbAdapter().upsertListing("unegui.mn", "hash1", rentRecord);
+    const result = await createDbAdapter().upsertListing("unegui.mn", "hash1", rentRecord);
 
-    expect(whereSpy).toHaveBeenCalledOnce();
+    expect(result.outcome).toBe("created");
+    expect(result.id).toBe("listing-uuid-1");
     const [condition] = whereSpy.mock.calls[0]!;
     const { sql } = dialect.sqlToQuery(condition);
     expect(sql).toContain('"source_id"');

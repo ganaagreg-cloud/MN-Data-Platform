@@ -28,7 +28,7 @@ export function createDbAdapter(): DbAdapter {
       sourceId: string,
       contentHash: string,
       record: TenderRecord,
-    ): Promise<UpsertOutcome> {
+    ): Promise<{ outcome: UpsertOutcome; id: string }> {
       const now = new Date();
 
       const existing = await db
@@ -43,7 +43,7 @@ export function createDbAdapter(): DbAdapter {
         .limit(1);
 
       if (existing.length === 0) {
-        await db.insert(tenders).values({
+        const [inserted] = await db.insert(tenders).values({
           sourceId,
           externalId:         record.externalId,
           contentHash,
@@ -60,8 +60,8 @@ export function createDbAdapter(): DbAdapter {
           status:             record.status,
           fetchedVia:         record.fetchedVia,
           raw:                record.raw,
-        });
-        return "created";
+        }).returning({ id: tenders.id });
+        return { outcome: "created", id: inserted!.id };
       }
 
       const row = existing[0]!;
@@ -71,7 +71,7 @@ export function createDbAdapter(): DbAdapter {
           .update(tenders)
           .set({ lastSeenAt: now })
           .where(eq(tenders.id, row.id));
-        return "unchanged";
+        return { outcome: "unchanged", id: row.id };
       }
 
       await db
@@ -92,14 +92,14 @@ export function createDbAdapter(): DbAdapter {
           raw:                record.raw,
         })
         .where(eq(tenders.id, row.id));
-      return "updated";
+      return { outcome: "updated", id: row.id };
     },
 
     async upsertListing(
       sourceId: string,
       contentHash: string,
       record: ListingRecord,
-    ): Promise<UpsertOutcome> {
+    ): Promise<{ outcome: UpsertOutcome; id: string }> {
       const now = new Date();
 
       const existing = await db
@@ -115,7 +115,7 @@ export function createDbAdapter(): DbAdapter {
         .limit(1);
 
       if (existing.length === 0) {
-        await db.insert(listings).values({
+        const [inserted] = await db.insert(listings).values({
           sourceId,
           externalId:  record.externalId,
           contentHash,
@@ -131,8 +131,8 @@ export function createDbAdapter(): DbAdapter {
           priceMnt:    record.priceMnt   != null ? record.priceMnt.toFixed(2)   : null,
           pricePerM2:  record.pricePerM2 != null ? record.pricePerM2.toFixed(2) : null,
           raw:         record.raw,
-        });
-        return "created";
+        }).returning({ id: listings.id });
+        return { outcome: "created", id: inserted!.id };
       }
 
       const row = existing[0]!;
@@ -142,7 +142,7 @@ export function createDbAdapter(): DbAdapter {
           .update(listings)
           .set({ lastSeenAt: now })
           .where(eq(listings.id, row.id));
-        return "unchanged";
+        return { outcome: "unchanged", id: row.id };
       }
 
       await db
@@ -162,7 +162,7 @@ export function createDbAdapter(): DbAdapter {
           raw:         record.raw,
         })
         .where(eq(listings.id, row.id));
-      return "updated";
+      return { outcome: "updated", id: row.id };
     },
 
     async getPreviousListingPrice(
