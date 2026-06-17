@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { z } from "zod";
 import { dispatchAlert } from "../alerts/dispatch.js";
 import { ResendEmailProvider } from "../alerts/providers/email.js";
+import { TelegramProvider } from "../alerts/providers/telegram.js";
 import { logger } from "../logger.js";
 
 function requireEnv(key: string): string {
@@ -25,6 +26,7 @@ function createEmailProvider(): ResendEmailProvider {
 }
 
 export const emailProvider = createEmailProvider();
+export const telegramProvider = new TelegramProvider();
 
 export function makeAlertDispatchHandler() {
   return async function handler(jobs: PgBoss.Job<unknown>[]) {
@@ -32,8 +34,7 @@ export function makeAlertDispatchHandler() {
     if (!job) return;
     // Zod throws on invalid payload → pg-boss marks job failed, no retry
     const payload = AlertJobPayloadSchema.parse(job.data);
-    await dispatchAlert(payload, [emailProvider]);
-    // TODO: add telegramProvider, smsProvider when implemented
+    await dispatchAlert(payload, [telegramProvider, emailProvider]);
     logger.info({ recordId: payload.recordId, userId: payload.userId }, "alert dispatched");
   };
 }
