@@ -29,7 +29,10 @@ function decodeCursor(s: string): Cursor | null {
       typeof parsed === "object" &&
       parsed !== null &&
       "id" in parsed &&
-      typeof (parsed as Record<string, unknown>).id === "string"
+      typeof (parsed as Record<string, unknown>).id === "string" &&
+      "deadline" in parsed &&
+      (typeof (parsed as Record<string, unknown>).deadline === "string" ||
+        (parsed as Record<string, unknown>).deadline === null)
     ) {
       return parsed as Cursor;
     }
