@@ -61,7 +61,7 @@ export async function saveModules(
       orgId: session.user.orgId,
       modules: raw,
       categories: [],
-      alertChannels: [],
+      alertChannels: ["telegram", "email"],
       status: "trial",
     })
     .onConflictDoUpdate({
