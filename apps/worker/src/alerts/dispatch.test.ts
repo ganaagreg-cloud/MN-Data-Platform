@@ -147,4 +147,43 @@ describe("dispatchAlert", () => {
     expect(emailProvider.send).not.toHaveBeenCalled();
     expect(telegramProvider.send).toHaveBeenCalledOnce();
   });
+
+  it("dispatches via telegram when alertChannels includes telegram and chatId is set", async () => {
+    const { db } = await import("@mn-platform/db");
+    (db.query.users.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "user-1", orgId: "org-1", email: null, telegramChatId: "-1001234567890", phone: null,
+    });
+    (db.query.subscriptions.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "sub-1", orgId: "org-1", status: "active",
+      alertChannels: ["telegram"], modules: ["tender"],
+    });
+
+    const telegramProvider = makeProvider("telegram");
+    await dispatchAlert(payload, [telegramProvider]);
+
+    expect(telegramProvider.send).toHaveBeenCalledOnce();
+    expect(telegramProvider.send).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: "tender-1" }),
+      expect.objectContaining({ telegramChatId: "-1001234567890" }),
+    );
+  });
+
+  it("skips telegram when telegramChatId is null", async () => {
+    const { db } = await import("@mn-platform/db");
+    // Default mockUser already has telegramChatId: null, but clearAllMocks resets
+    // the mock return value — re-mock explicitly to ensure telegramChatId is null.
+    (db.query.users.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "user-1", orgId: "org-1", email: "test@example.com", telegramChatId: null, phone: null,
+    });
+    (db.query.subscriptions.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: "sub-1", orgId: "org-1", status: "active",
+      alertChannels: ["telegram"], modules: ["tender"],
+    });
+
+    const telegramProvider = makeProvider("telegram");
+    await dispatchAlert(payload, [telegramProvider]);
+
+    expect(telegramProvider.send).not.toHaveBeenCalled();
+    expect(insertNotificationSent).not.toHaveBeenCalled();
+  });
 });
