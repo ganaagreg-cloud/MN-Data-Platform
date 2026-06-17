@@ -14,6 +14,7 @@ import { openDataTenderSource } from "./sources/opendata-tender-gov-mn.js";
 import { uneguiSaleSource, uneguiRentSource } from "./sources/unegui-mn.js";
 import { warnZeroValueListing } from "./sources/listing-schema.js";
 import { makeAlertDispatchHandler } from "./jobs/alert-dispatch.js";
+import { queryMatchingUsers } from "./alerts/query-matching-users.js";
 import { logger } from "./logger.js";
 import type { WorkerState } from "./types.js";
 
@@ -111,7 +112,36 @@ export async function registerJobs(
         const result = await runPipeline({
           source: tenderSource,
           upsert: db.upsertTender,
-          onChanged: (record) => notifyTenderChanged(record),
+          onChanged: async (record, _outcome, _previous, dbId) => {
+            // Ops Telegram feed (best-effort)
+            await notifyTenderChanged(record);
+
+            // Customer alert fan-out — skip if no DB id or no category to match
+            if (!dbId || !record.category) return;
+
+            const hash = tenderSource.contentHash(record);
+            let matches: { userId: string }[] = [];
+            try {
+              matches = await queryMatchingUsers(record.category);
+            } catch (err) {
+              logger.warn(
+                { err, category: record.category, event: "query_matching_users_failed" },
+                "alert fan-out aborted",
+              );
+              return;
+            }
+
+            for (const { userId } of matches) {
+              await boss
+                .send("alert.dispatch", { recordId: dbId, contentHash: hash, userId })
+                .catch((err) =>
+                  logger.warn(
+                    { err, userId, event: "alert_enqueue_failed" },
+                    "alert.dispatch enqueue failed",
+                  ),
+                );
+            }
+          },
         });
         state.lastRunAt = new Date();
         logger.info({ ...result, adapter, event: "scrape_complete" });
