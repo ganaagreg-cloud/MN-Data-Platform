@@ -166,6 +166,7 @@ describe("dispatchAlert", () => {
       expect.objectContaining({ recordId: "tender-1" }),
       expect.objectContaining({ telegramChatId: "-1001234567890" }),
     );
+    expect(insertNotificationSent).toHaveBeenCalledOnce();
   });
 
   it("skips telegram when telegramChatId is null", async () => {

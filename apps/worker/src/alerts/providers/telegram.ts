@@ -6,7 +6,7 @@ export class TelegramProvider implements ChannelProvider {
 
   async send(notification: Notification, recipient: Recipient): Promise<void> {
     if (!recipient.telegramChatId) {
-      throw new Error("TelegramProvider: recipient.telegramChatId is required");
+      return;
     }
     await sendTelegramMessageTo(recipient.telegramChatId, notification.body);
   }
