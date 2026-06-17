@@ -5,7 +5,7 @@ export type UpsertFn<TRecord> = (
   sourceId: string,
   contentHash: string,
   record: TRecord,
-) => Promise<UpsertOutcome>;
+) => Promise<{ outcome: UpsertOutcome; id: string }>;
 
 export interface RunPipelineOptions<TRaw, TRecord> {
   source: Source<TRaw, TRecord>;
@@ -33,6 +33,7 @@ export interface RunPipelineOptions<TRaw, TRecord> {
     record: TRecord,
     outcome: "created" | "updated",
     previous?: Partial<TRecord>,
+    dbId?: string,
   ) => void | Promise<void>;
 }
 
@@ -70,12 +71,12 @@ export async function runPipeline<TRaw, TRecord>(
 
         const hash = source.contentHash(validated);
         const previous = await getPrevious?.(validated);
-        const outcome = await upsert(source.id, hash, validated);
+        const { outcome, id: dbId } = await upsert(source.id, hash, validated);
         if (outcome === "created") created++;
         else if (outcome === "updated") updated++;
 
         if (outcome !== "unchanged") {
-          await onChanged?.(validated, outcome, previous);
+          await onChanged?.(validated, outcome, previous, dbId);
         }
       } catch (err) {
         errors++;

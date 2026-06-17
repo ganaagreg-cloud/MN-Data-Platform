@@ -1,7 +1,7 @@
 // apps/worker/src/listing-pipeline.test.ts
 import { describe, it, expect, vi } from "vitest";
 import { runPipeline } from "@mn-platform/core";
-import type { Source, ListingRecord, UpsertOutcome } from "@mn-platform/core";
+import type { Source, ListingRecord } from "@mn-platform/core";
 import { ListingRecordSchema, listingContentHash } from "./sources/listing-schema.js";
 
 const outOfUbRecord: ListingRecord = {
@@ -20,7 +20,7 @@ const outOfUbRecord: ListingRecord = {
 
 describe("runPipeline — listing filter integration", () => {
   it("skips records where source.filter returns false — upsert never called", async () => {
-    const upsert = vi.fn<() => Promise<UpsertOutcome>>().mockResolvedValue("created");
+    const upsert = vi.fn().mockResolvedValue({ outcome: "created", id: "uuid-1" });
 
     const source: Source<ListingRecord, ListingRecord> = {
       id:          "test.source",
