@@ -327,7 +327,7 @@ function DoneStep() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
       <h1>Бэлэн боллоо!</h1>
-      <p style={{ color: "#555" }}>Your account is set up. You can update these settings later.</p>
+      <p style={{ color: "#555" }}>Your account is set up.</p>
       <button type="button" onClick={() => router.push("/dashboard")}>
         Go to Dashboard
       </button>

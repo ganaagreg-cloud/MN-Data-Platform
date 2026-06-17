@@ -40,7 +40,9 @@ const middleware: NextMiddleware = auth(
       return new NextResponse("Forbidden", { status: 403 });
     }
 
-    // Email required — redirect to /onboarding to collect it
+    // TODO: replace this fragile proxy with a proper users.has_completed_onboarding
+    // boolean once /settings exists — email-null will break as the gate once we
+    // allow users who never set an email (e.g. Telegram-only accounts).
     if (!session.user.email) {
       return NextResponse.redirect(new URL("/onboarding", req.url));
     }
