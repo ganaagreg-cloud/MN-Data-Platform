@@ -1,5 +1,4 @@
 // packages/core/src/crawlbase.ts
-import { CrawlingAPI } from "crawlbase";
 
 export interface FetchRenderedHtmlOptions {
   /** Extra ms Crawlbase's headless browser waits after load before returning HTML. */
@@ -8,15 +7,12 @@ export interface FetchRenderedHtmlOptions {
   userAgent?: string;
 }
 
-/** The subset of CrawlingAPI's response shape this module relies on. */
-interface CrawlbaseResponse {
-  statusCode: number;
-  body: string;
-}
-
 /**
  * Fetches a JS-rendered page via the Crawlbase Crawling API and returns the
  * rendered HTML. Requires CRAWLBASE_TOKEN in the environment.
+ *
+ * Uses native fetch instead of the crawlbase npm package to avoid the package's
+ * 90-second hard timeout (pages with long page_wait values can exceed it).
  */
 export async function fetchRenderedHtml(
   url: string,
@@ -27,15 +23,24 @@ export async function fetchRenderedHtml(
     throw new Error("Missing required environment variable: CRAWLBASE_TOKEN");
   }
 
-  const api = new CrawlingAPI({ token });
-  const response = (await api.get(url, {
-    ...(options.pageWaitMs !== undefined ? { page_wait: options.pageWaitMs } : {}),
-    ...(options.userAgent !== undefined ? { userAgent: options.userAgent } : {}),
-  })) as CrawlbaseResponse;
-
-  if (response.statusCode !== 200) {
-    throw new Error(`Crawlbase request failed for ${url}: status ${response.statusCode}`);
+  const params = new URLSearchParams({ token, url, ajax_wait: "true" });
+  if (options.pageWaitMs !== undefined) {
+    params.set("page_wait", String(options.pageWaitMs));
+  }
+  if (options.userAgent !== undefined) {
+    params.set("user_agent", options.userAgent);
   }
 
-  return response.body;
+  const apiUrl = `https://api.crawlbase.com/?${params.toString()}`;
+  const response = await fetch(apiUrl);
+  const body = await response.text();
+
+  const originalStatus = response.headers.get("original_status");
+  const statusCode = originalStatus ? Number(originalStatus) : response.status;
+
+  if (statusCode !== 200) {
+    throw new Error(`Crawlbase request failed for ${url}: status ${statusCode}`);
+  }
+
+  return body;
 }
