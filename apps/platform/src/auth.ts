@@ -1,17 +1,17 @@
 import NextAuth, { type NextAuthResult } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { env, isAdminTelegramId } from "@/env";
+import { env } from "@/env";
 import {
   MAX_AUTH_AGE_SECONDS,
   TelegramAuthPayloadSchema,
   verifyTelegramAuth,
 } from "@/lib/telegram-auth-schema";
 import { upsertTelegramUser } from "@/lib/upsert-telegram-user";
+import { authConfig } from "@/auth.config";
 
 export const { handlers, signIn, signOut, auth, unstable_update }: NextAuthResult = NextAuth({
-  session: { strategy: "jwt" },
+  ...authConfig,
   secret: env.AUTH_SECRET,
-  pages: { signIn: "/login" },
   providers: [
     Credentials({
       name: "Telegram",
@@ -42,29 +42,4 @@ export const { handlers, signIn, signOut, auth, unstable_update }: NextAuthResul
       },
     }),
   ],
-  callbacks: {
-    jwt({ token, user, trigger, session }) {
-      if (user?.id) {
-        token.userId = user.id;
-        token.telegramId = (user as { telegramId: number }).telegramId;
-        token.orgId = (user as { orgId: string }).orgId;
-        token["email"] = (user as { email?: string | null }).email ?? null;
-      }
-      token.isAdmin = isAdminTelegramId(token.telegramId as number);
-      const triggerSession = session as { user?: { email?: string } } | null;
-      if (trigger === "update" && triggerSession?.user?.email) {
-        token["email"] = triggerSession.user.email;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      session.user.id = token.userId as string;
-      session.user.telegramId = token.telegramId as number;
-      session.user.orgId = token.orgId as string;
-      session.user.isAdmin = token.isAdmin as boolean;
-      const userWithEmail = session.user as { email?: string | null };
-      userWithEmail.email = (token["email"] as string | null | undefined) ?? null;
-      return session;
-    },
-  },
 });

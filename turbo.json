@@ -1,6 +1,15 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "DATABASE_URL",
+    "DATABASE_URL_DIRECT",
+    "TELEGRAM_BOT_TOKEN",
+    "BOT_USERNAME",
+    "AUTH_SECRET",
+    "ADMIN_TELEGRAM_IDS",
+    "NODE_ENV"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

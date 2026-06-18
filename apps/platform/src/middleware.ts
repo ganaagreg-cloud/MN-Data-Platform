@@ -1,8 +1,11 @@
 import { NextResponse, type NextFetchEvent, type NextMiddleware } from "next/server";
-import { auth } from "@/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/auth.config";
 import type { NextAuthRequest } from "next-auth";
 
-const PUBLIC_PREFIXES = ["/login", "/onboarding", "/api/auth"];
+const { auth } = NextAuth(authConfig);
+
+const PUBLIC_PREFIXES = ["/", "/login", "/onboarding", "/api/auth"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));

@@ -18,10 +18,14 @@ export default async function LoginPage({
   }
 
   return (
-    <main>
-      <h1>Нэвтрэх</h1>
-      <p>Telegram ашиглан нэвтэрнэ үү.</p>
-      <TelegramLoginButton botUsername={env.BOT_USERNAME} plan={plan} />
+    <main className="min-h-screen bg-white flex items-center justify-center">
+      <div className="flex flex-col items-center gap-6 p-8 max-w-sm w-full">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Нэвтрэх</h1>
+          <p className="text-gray-500 text-sm">Telegram ашиглан нэвтэрнэ үү.</p>
+        </div>
+        <TelegramLoginButton botUsername={env.BOT_USERNAME} plan={plan} />
+      </div>
     </main>
   );
 }
