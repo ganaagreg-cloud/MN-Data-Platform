@@ -29,15 +29,17 @@ interface RawListing {
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const SOURCE_ID  = "unegui.mn";
-const SALE_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-zarna/oron-suuts-zarna/ulan-bator/";
-const RENT_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-treesllne/oron-suuts/ulan-bator/";
+// `/ulan-bator/` path redirects to an empty page; UB filtering is done via
+// normalizeDistrict() + `filter: r => r.district !== null` downstream.
+const SALE_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-zarna/oron-suuts-zarna/";
+const RENT_URL   = "https://www.unegui.mn/l-hdlh/l-hdlh-treesllne/oron-suuts/";
 const USER_AGENT = "GazarPrice/1.0 (+https://gazarprice.mn; info@gazarprice.mn)";
 
 // One token bucket for the entire unegui.mn domain — shared across sale and rent.
 const limiter = getRateLimiter("unegui.mn");
 
-// Verified against live rendered DOM 2026-06-14 for both the sale and rent
-// listing pages (oron-suuts-zarna / oron-suuts, ulan-bator).
+// Verified against live rendered DOM 2026-06-18 for both the sale and rent
+// listing pages (oron-suuts-zarna / oron-suuts, without /ulan-bator/ path).
 const SEL = {
   CARD:      ".advert.js-item-listing",
   PRICE:     ".advert__content-price",
@@ -144,7 +146,8 @@ async function fetchListingPage(
   const pageNum = cursor !== undefined ? parseInt(cursor, 10) : 1;
   await limiter.acquire();
 
-  const pageUrl = `${url}?cities=1&page=${pageNum}`;
+  // unegui.mn redirects ?page=1 to the base URL — omit the param for page 1.
+  const pageUrl = pageNum === 1 ? url : `${url}?page=${pageNum}`;
   const html = await fetchRenderedHtml(pageUrl, { pageWaitMs: 3_000, userAgent: USER_AGENT });
   const $ = cheerio.load(html);
 
