@@ -14,7 +14,9 @@ import { openDataTenderSource } from "./sources/opendata-tender-gov-mn.js";
 import { uneguiSaleSource, uneguiRentSource } from "./sources/unegui-mn.js";
 import { warnZeroValueListing } from "./sources/listing-schema.js";
 import { makeAlertDispatchHandler } from "./jobs/alert-dispatch.js";
+import { makeListingAlertDispatchHandler } from "./jobs/listing-alert-dispatch.js";
 import { queryMatchingUsers } from "./alerts/query-matching-users.js";
+import { queryMatchingListingUsers } from "./alerts/query-matching-listing-users.js";
 import { logger } from "./logger.js";
 import type { WorkerState } from "./types.js";
 
@@ -167,7 +169,30 @@ export async function registerJobs(
           upsert: db.upsertListing,
           onValidated: (record) => warnZeroValueListing(uneguiSaleSource.id, record),
           getPrevious: (record) => db.getPreviousListingPrice(uneguiSaleSource.id, record),
-          onChanged: (record, outcome, previous) => notifyListingChanged(record, outcome, previous),
+          onChanged: async (record, outcome, previous, dbId) => {
+            await notifyListingChanged(record, outcome, previous);
+            if (!dbId) return;
+            const hash = uneguiSaleSource.contentHash(record);
+            let matches: { userId: string; telegramChatId: string }[] = [];
+            try {
+              matches = await queryMatchingListingUsers({
+                listingType: record.listingType,
+                district:    record.district,
+                priceMnt:    record.priceMnt,
+                rooms:       record.rooms,
+              });
+            } catch (err) {
+              logger.warn({ err, event: "query_matching_listing_users_failed" }, "listing alert fan-out aborted");
+              return;
+            }
+            for (const { userId, telegramChatId } of matches) {
+              await boss
+                .send("listing.alert.dispatch", { recordId: dbId, contentHash: hash, userId, telegramChatId })
+                .catch((err) =>
+                  logger.warn({ err, userId, event: "listing_alert_enqueue_failed" }, "listing.alert.dispatch enqueue failed"),
+                );
+            }
+          },
         });
         state.lastRunAt = new Date();
         logger.info({ ...result, event: "scrape_complete" });
@@ -200,7 +225,30 @@ export async function registerJobs(
           upsert: db.upsertListing,
           onValidated: (record) => warnZeroValueListing(uneguiRentSource.id, record),
           getPrevious: (record) => db.getPreviousListingPrice(uneguiRentSource.id, record),
-          onChanged: (record, outcome, previous) => notifyListingChanged(record, outcome, previous),
+          onChanged: async (record, outcome, previous, dbId) => {
+            await notifyListingChanged(record, outcome, previous);
+            if (!dbId) return;
+            const hash = uneguiRentSource.contentHash(record);
+            let matches: { userId: string; telegramChatId: string }[] = [];
+            try {
+              matches = await queryMatchingListingUsers({
+                listingType: record.listingType,
+                district:    record.district,
+                priceMnt:    record.priceMnt,
+                rooms:       record.rooms,
+              });
+            } catch (err) {
+              logger.warn({ err, event: "query_matching_listing_users_failed" }, "listing alert fan-out aborted");
+              return;
+            }
+            for (const { userId, telegramChatId } of matches) {
+              await boss
+                .send("listing.alert.dispatch", { recordId: dbId, contentHash: hash, userId, telegramChatId })
+                .catch((err) =>
+                  logger.warn({ err, userId, event: "listing_alert_enqueue_failed" }, "listing.alert.dispatch enqueue failed"),
+                );
+            }
+          },
         });
         state.lastRunAt = new Date();
         logger.info({ ...result, event: "scrape_complete" });
@@ -218,11 +266,18 @@ export async function registerJobs(
     },
   );
 
-  // ── alert.dispatch ──────────────────────────────────────────────────────────
+  // ── alert.dispatch (tenders) ────────────────────────────────────────────────
   await boss.work(
     "alert.dispatch",
     { batchSize: 5 },
     makeAlertDispatchHandler(),
+  );
+
+  // ── listing.alert.dispatch (gazar listings) ──────────────────────────────────
+  await boss.work(
+    "listing.alert.dispatch",
+    { batchSize: 5 },
+    makeListingAlertDispatchHandler(),
   );
 
   // ── export.generate ─────────────────────────────────────────────────────────

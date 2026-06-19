@@ -50,10 +50,22 @@ export const users = pgTable(
   ],
 );
 
+// ── gazar filters ─────────────────────────────────────────────────────────────
+// Stored as JSONB on subscriptions.gazar_filters. All fields optional —
+// absent key = "any" (no filter applied for that dimension).
+export interface GazarFilters {
+  districts?: string[];               // e.g. ["Хан-Уул", "Сүхбаатар"]
+  rooms?: number[];                   // e.g. [2, 3]
+  minPriceMnt?: number;
+  maxPriceMnt?: number;
+  listingTypes?: ("sale" | "rent")[];  // absent = both
+}
+
 // ── subscriptions ─────────────────────────────────────────────────────────────
 // modules: ("tender" | "gazar")[]
 // alertChannels: ("email" | "telegram" | "sms")[]
 // status: trial | active | expired | cancelled
+// gazarFilters: per-user listing alert filters (see GazarFilters above)
 export const subscriptions = pgTable(
   "subscriptions",
   {
@@ -66,6 +78,7 @@ export const subscriptions = pgTable(
     alertChannels: text("alert_channels").array().notNull().default([]),
     status: text("status").notNull().default("trial"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
+    gazarFilters: jsonb("gazar_filters").$type<GazarFilters>(),
     ...timestamps,
   },
   (t) => [

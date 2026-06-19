@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { auth, unstable_update } from "@/auth";
-import { db, users, subscriptions, eq } from "@mn-platform/db";
+import { db, users, subscriptions, eq, type GazarFilters } from "@mn-platform/db";
 import { parseChatId } from "@/lib/parse-chat-id";
 
 type ActionState = { error: string } | null;
@@ -95,6 +95,64 @@ export async function saveCategories(
     .onConflictDoUpdate({
       target: subscriptions.orgId,
       set: { categories, updatedAt: new Date() },
+    });
+
+  return null;
+}
+
+export async function saveGazarFilters(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Not authenticated" };
+
+  const districts = formData
+    .getAll("districts")
+    .filter((d): d is string => typeof d === "string");
+
+  const roomsRaw = formData
+    .getAll("rooms")
+    .filter((r): r is string => typeof r === "string")
+    .map(Number)
+    .filter((n) => !isNaN(n));
+
+  const listingTypesRaw = formData
+    .getAll("listingTypes")
+    .filter((t): t is string => typeof t === "string")
+    .filter((t): t is "sale" | "rent" => t === "sale" || t === "rent");
+
+  const minRaw = formData.get("minPriceMnt");
+  const maxRaw = formData.get("maxPriceMnt");
+  const minPriceMnt = typeof minRaw === "string" && minRaw.trim() !== "" ? Number(minRaw) : undefined;
+  const maxPriceMnt = typeof maxRaw === "string" && maxRaw.trim() !== "" ? Number(maxRaw) : undefined;
+
+  if (minPriceMnt !== undefined && isNaN(minPriceMnt)) return { error: "Доод үнэ буруу байна" };
+  if (maxPriceMnt !== undefined && isNaN(maxPriceMnt)) return { error: "Дээд үнэ буруу байна" };
+  if (minPriceMnt !== undefined && maxPriceMnt !== undefined && minPriceMnt > maxPriceMnt) {
+    return { error: "Доод үнэ дээд үнээс их байж болохгүй" };
+  }
+
+  const filters: GazarFilters = {};
+  if (districts.length > 0) filters.districts = districts;
+  if (roomsRaw.length > 0) filters.rooms = roomsRaw;
+  if (listingTypesRaw.length > 0 && listingTypesRaw.length < 2) filters.listingTypes = listingTypesRaw;
+  if (minPriceMnt !== undefined) filters.minPriceMnt = minPriceMnt;
+  if (maxPriceMnt !== undefined) filters.maxPriceMnt = maxPriceMnt;
+
+  await db
+    .insert(subscriptions)
+    .values({
+      orgId: session.user.orgId,
+      modules: [],
+      categories: [],
+      alertChannels: [],
+      status: "trial",
+      gazarFilters: filters,
+    })
+    .onConflictDoUpdate({
+      target: subscriptions.orgId,
+      set: { gazarFilters: filters, updatedAt: new Date() },
     });
 
   return null;

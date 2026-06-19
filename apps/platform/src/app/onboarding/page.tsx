@@ -15,7 +15,7 @@ export default async function OnboardingPage({
   }
 
   const params = await searchParams;
-  const requestedStep = Math.min(4, Math.max(0, Math.floor(Number(params.step ?? 0) || 0)));
+  const requestedStep = Math.min(5, Math.max(0, Math.floor(Number(params.step ?? 0) || 0)));
 
   // Auto-advance past email step if email is already set
   const effectiveStep = session.user.email ? Math.max(requestedStep, 1) : requestedStep;
@@ -30,9 +30,14 @@ export default async function OnboardingPage({
 
   const modules = subscription?.modules ?? [];
 
-  // Skip categories step if tender is not selected
+  // Skip categories step (2) if tender is not selected
   if (effectiveStep === 2 && !modules.includes("tender")) {
     redirect("/onboarding?step=3");
+  }
+
+  // Skip gazar filters step (3) if gazar is not selected
+  if (effectiveStep === 3 && !modules.includes("gazar")) {
+    redirect("/onboarding?step=4");
   }
 
   return (
@@ -40,6 +45,7 @@ export default async function OnboardingPage({
       initialStep={effectiveStep}
       existingModules={modules}
       existingCategories={subscription?.categories ?? []}
+      existingGazarFilters={subscription?.gazarFilters ?? null}
       existingTelegramChatId={user?.telegramChatId ?? null}
       botUsername={process.env["TELEGRAM_BOT_USERNAME"] ?? null}
     />

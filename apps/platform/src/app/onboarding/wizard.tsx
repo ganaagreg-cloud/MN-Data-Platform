@@ -2,15 +2,29 @@
 
 import { useState, useTransition, useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { saveEmail, saveModules, saveCategories, saveTelegramChatId } from "./actions";
+import { saveEmail, saveModules, saveCategories, saveGazarFilters, saveTelegramChatId } from "./actions";
 import { TENDER_CATEGORIES } from "@/lib/tender-categories";
+import type { GazarFilters } from "@mn-platform/db";
 
 type ActionState = { error: string } | null;
+
+const UB_DISTRICTS = [
+  "Баянзүрх",
+  "Сүхбаатар",
+  "Чингэлтэй",
+  "Хан-Уул",
+  "Сонгинохайрхан",
+  "Баянгол",
+  "Налайх",
+  "Багануур",
+  "Багахангай",
+];
 
 interface WizardProps {
   initialStep: number;
   existingModules: string[];
   existingCategories: string[];
+  existingGazarFilters: GazarFilters | null;
   existingTelegramChatId: string | null;
   botUsername: string | null;
 }
@@ -24,7 +38,7 @@ export function OnboardingWizard(props: WizardProps) {
     router.push(`/onboarding?step=${n}`, { scroll: false });
   };
 
-  const totalSteps = 3; // steps 1–3, step 0 (email) is pre-wizard
+  const totalSteps = 4; // steps 1–4, step 0 (email) is pre-wizard
 
   return (
     <main
@@ -35,7 +49,7 @@ export function OnboardingWizard(props: WizardProps) {
         padding: "4rem 1rem 0",
       }}
     >
-      {step > 0 && step < 4 && (
+      {step > 0 && step < 5 && (
         <p style={{ color: "#888", marginBottom: "1.5rem", fontSize: "0.875rem" }}>
           Step {step} of {totalSteps}
         </p>
@@ -48,13 +62,16 @@ export function OnboardingWizard(props: WizardProps) {
         <CategoryStep advance={advance} existingCategories={props.existingCategories} />
       )}
       {step === 3 && (
+        <GazarFiltersStep advance={advance} existing={props.existingGazarFilters} />
+      )}
+      {step === 4 && (
         <TelegramStep
           advance={advance}
           existingChatId={props.existingTelegramChatId}
           botUsername={props.botUsername}
         />
       )}
-      {step === 4 && <DoneStep />}
+      {step === 5 && <DoneStep />}
     </main>
   );
 }
@@ -241,6 +258,197 @@ function CategoryStep({
   );
 }
 
+export function GazarFiltersForm({
+  existing,
+  onSaved,
+  submitLabel = "Хадгалах",
+}: {
+  existing: GazarFilters | null;
+  onSaved?: () => void;
+  submitLabel?: string;
+}) {
+  const [districts, setDistricts] = useState<Set<string>>(
+    new Set(existing?.districts ?? []),
+  );
+  const [rooms, setRooms] = useState<Set<number>>(new Set(existing?.rooms ?? []));
+  const [listingType, setListingType] = useState<"sale" | "rent" | "both">(
+    existing?.listingTypes?.length === 1 ? existing.listingTypes[0]! : "both",
+  );
+  const [minPrice, setMinPrice] = useState(
+    existing?.minPriceMnt != null ? String(existing.minPriceMnt) : "",
+  );
+  const [maxPrice, setMaxPrice] = useState(
+    existing?.maxPriceMnt != null ? String(existing.maxPriceMnt) : "",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const toggleDistrict = (d: string) =>
+    setDistricts((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+
+  const toggleRoom = (r: number) =>
+    setRooms((prev) => {
+      const next = new Set(prev);
+      if (next.has(r)) next.delete(r);
+      else next.add(r);
+      return next;
+    });
+
+  const handleSave = () => {
+    const fd = new FormData();
+    districts.forEach((d) => fd.append("districts", d));
+    rooms.forEach((r) => fd.append("rooms", String(r)));
+    if (listingType !== "both") fd.append("listingTypes", listingType);
+    if (minPrice.trim()) fd.set("minPriceMnt", minPrice.trim());
+    if (maxPrice.trim()) fd.set("maxPriceMnt", maxPrice.trim());
+
+    startTransition(async () => {
+      const result = await saveGazarFilters(null, fd);
+      if (result?.error) setError(result.error);
+      else { setError(null); onSaved?.(); }
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", width: "24rem" }}>
+      {/* Listing type */}
+      <div>
+        <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Зар төрөл</p>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {(["both", "sale", "rent"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setListingType(t)}
+              style={{
+                padding: "0.4rem 0.9rem",
+                border: listingType === t ? "2px solid #0070f3" : "2px solid #ddd",
+                borderRadius: "6px",
+                background: listingType === t ? "#f0f7ff" : "white",
+                cursor: "pointer",
+                fontWeight: listingType === t ? "600" : "400",
+                fontSize: "0.875rem",
+              }}
+            >
+              {t === "both" ? "Аль аль нь" : t === "sale" ? "Зарна" : "Түрээс"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Districts */}
+      <div>
+        <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
+          Дүүрэг <span style={{ fontWeight: 400, color: "#888" }}>(сонгоогүй бол бүх дүүрэг)</span>
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.35rem" }}>
+          {UB_DISTRICTS.map((d) => (
+            <label key={d} style={{ display: "flex", gap: "0.4rem", cursor: "pointer", fontSize: "0.875rem" }}>
+              <input
+                type="checkbox"
+                checked={districts.has(d)}
+                onChange={() => toggleDistrict(d)}
+              />
+              {d}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Rooms */}
+      <div>
+        <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>
+          Өрөөний тоо <span style={{ fontWeight: 400, color: "#888" }}>(сонгоогүй бол бүх)</span>
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {[1, 2, 3, 4].map((r) => (
+            <label
+              key={r}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                cursor: "pointer",
+                fontSize: "0.875rem",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={rooms.has(r)}
+                onChange={() => toggleRoom(r)}
+              />
+              {r === 4 ? "4+" : r}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Price range */}
+      <div>
+        <p style={{ fontWeight: 600, marginBottom: "0.5rem" }}>Үнийн хязгаар (₮)</p>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="number"
+            placeholder="Доод үнэ"
+            value={minPrice}
+            onChange={(e) => setMinPrice(e.target.value)}
+            style={{ flex: 1, padding: "0.4rem", fontSize: "0.875rem" }}
+          />
+          <span style={{ color: "#888" }}>–</span>
+          <input
+            type="number"
+            placeholder="Дээд үнэ"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(e.target.value)}
+            style={{ flex: 1, padding: "0.4rem", fontSize: "0.875rem" }}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p role="alert" style={{ color: "red", margin: 0, fontSize: "0.875rem" }}>
+          {error}
+        </p>
+      )}
+
+      <button type="button" onClick={handleSave} disabled={isPending}>
+        {isPending ? "Хадгалж байна…" : submitLabel}
+      </button>
+    </div>
+  );
+}
+
+function GazarFiltersStep({
+  advance,
+  existing,
+}: {
+  advance: (n: number) => void;
+  existing: GazarFilters | null;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
+      <h1>ГазарПрайс шүүлтүүр</h1>
+      <p style={{ color: "#555", textAlign: "center", maxWidth: "28rem" }}>
+        Зөвхөн таны сонирхсон байрны мэдэгдэл илгээнэ.
+        Бүх талбар заавал биш — хоосон орхивол бүх зар хамрагдана.
+      </p>
+      <GazarFiltersForm existing={existing} onSaved={() => advance(4)} submitLabel="Хадгалаад үргэлжлүүлэх" />
+      <button
+        type="button"
+        onClick={() => advance(4)}
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#888", marginTop: "-0.5rem" }}
+      >
+        Алгасах
+      </button>
+    </div>
+  );
+}
+
 function TelegramStep({
   advance,
   existingChatId,
@@ -260,7 +468,7 @@ function TelegramStep({
     startTransition(async () => {
       const result = await saveTelegramChatId(null, fd);
       if (result?.error) setError(result.error);
-      else advance(4);
+      else advance(5);
     });
   };
 
@@ -311,7 +519,7 @@ function TelegramStep({
           </button>
           <button
             type="button"
-            onClick={() => advance(4)}
+            onClick={() => advance(5)}
             style={{ background: "none", border: "none", cursor: "pointer", color: "#888" }}
           >
             Skip
