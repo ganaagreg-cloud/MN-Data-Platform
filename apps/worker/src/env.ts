@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  SENTRY_DSN: z.string().url(),
+  SENTRY_DSN: z.string().url().optional(),
   NODE_ENV: z.string().default("development"),
   GIT_SHA: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().min(1),
